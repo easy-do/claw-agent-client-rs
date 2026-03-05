@@ -584,10 +584,7 @@ tail -f log/cmd.log
 
 ## 相关链接
 
-- **服务端插件仓库**：https://gitee.com/yuzhanfeng/remote-agent-plugin
+- **服务端插件仓库**：https://gitee.com/yuzhanfeng/claw-agent-client-rs.git
+- **服务端插件仓库**：https://github.com/easy-do/claw-agent-client-rs.git
 - **OpenClaw 文档**：https://docs.openclaw.ai
 
-
-## 许可证
-
-MIT License
