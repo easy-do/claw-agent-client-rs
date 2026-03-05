@@ -1,0 +1,84 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clean
+        run: |
+          if (Test-Path target) { Remove-Item -Path target -Recurse -Force }
+      - name: Build
+        run: |
+          cargo build --release --bin claw-agent-client-rs
+      - name: Rename binary
+        run: |
+          mv target/release/claw-agent-client-rs.exe target/release/claw-agent-client-rs-windows.exe
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: target/release/claw-agent-client-rs-windows.exe
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          cargo build --release --bin claw-agent-client-rs
+      - name: Rename binary
+        run: |
+          mv target/release/claw-agent-client-rs target/release/claw-agent-client-rs-macos
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: target/release/claw-agent-client-rs-macos
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev pkg-config
+      - name: Build
+        run: |
+          cargo build --release --bin claw-agent-client-rs
+      - name: Rename binary
+        run: |
+          mv target/release/claw-agent-client-rs target/release/claw-agent-client-rs-linux
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: target/release/claw-agent-client-rs-linux
+
+  release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./release-assets
+          merge-multiple: true   # 将所有 artifact 合并到同一目录
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./release-assets/*   # 上传该目录下所有文件
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
