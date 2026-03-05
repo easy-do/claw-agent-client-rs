@@ -23,7 +23,7 @@
 
 ### 是什么？
 
-clw-agent-client-rs 是一个 Rust 编写的跨平台代理客户端，配合 OpenClaw 网关的 Remote Agent 插件使用，部署在远程设备上以实现远程控制和管理。
+claw-agent-client-rs 是一个 Rust 编写的跨平台代理客户端，配合 OpenClaw 网关的 Remote Agent 插件使用，部署在远程设备上以实现远程控制和管理。
 
 ### 能做什么？
 
@@ -57,7 +57,7 @@ clw-agent-client-rs 是一个 Rust 编写的跨平台代理客户端，配合 Op
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │   │
 │  │  │   Platform  │  │    Auth     │  │   Config    │ │   │
 │  │  │   Layer     │  │   Module    │  │   Loader    │ │   │
-│  │  │ (Win/Mac/Ln)│  │  (HMAC)     │  │  (YAML)     │ │   │
+│  │  │ (Win/Mac/Ln)│  │  (Token)    │  │  (YAML)     │ │   │
 │  │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘ │   │
 │  └─────────┼────────────────┼────────────────┼────────┘   │
 └────────────┼────────────────┼────────────────┼──────────────┘
@@ -68,7 +68,7 @@ clw-agent-client-rs 是一个 Rust 编写的跨平台代理客户端，配合 Op
 ┌────────────┴────────────────┴────────────────┴──────────────┐
 │                        OpenClaw 网关                          │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │              Remote Agent 插件                       │   │
+│  │              Remote Agent 插件                        │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │   │
 │  │  │ WebSocket   │  │ Unix Socket │  │   Tools     │ │   │
 │  │  │   Server    │  │   Server    │  │  Registry   │ │   │
@@ -78,13 +78,21 @@ clw-agent-client-rs 是一个 Rust 编写的跨平台代理客户端，配合 Op
 └──────────────────────────────────────────────────────────────┘
 ```
 
+### 认证机制
+
+1. **单一 Token**：服务端和客户端使用相同的 Token 进行认证
+2. **自动注册**：客户端连接时只要 Token 校验通过，即可自动注册（不需要在服务端预先配置）
+3. **唯一在线**：同一 agent_id 只能有一个在线连接
+
 ### 工作流程
 
-1. **启动连接**：客户端启动后，通过 WebSocket 连接到服务端 `server_url`
-2. **身份认证**：客户端发送 `agent_id` 和 `token` 进行认证
-3. **保持连接**：认证成功后，客户端保持长连接，等待服务端推送命令
-4. **命令执行**：服务端发送命令（通过 AI 工具调用或直接推送），客户端执行后返回结果
-5. **自动重连**：连接断开后，客户端会自动尝试重新连接
+1. **获取 Token**：从服务端获取或生成 Token
+2. **配置客户端**：在 `agent.yml` 中配置 Token 和自己的 agent_id
+3. **启动连接**：客户端启动后，通过 WebSocket 连接到服务端 `server_url`
+4. **身份认证**：客户端发送 `agent_id` 和 `token` 进行认证
+5. **保持连接**：认证成功后，客户端保持长连接，等待服务端推送命令
+6. **命令执行**：服务端发送命令，客户端执行后返回结果
+7. **自动重连**：连接断开后，客户端会自动尝试重新连接
 
 ### 关键技术点
 
@@ -167,21 +175,38 @@ cargo build --release
 
 编译产物位于 `target/release/claw-agent-client-rs`（Linux/macOS）或 `target/release/claw-agent-client-rs.exe`（Windows）。
 
-### 步骤三：配置文件
+### 步骤三：获取 Token
+
+首先需要在服务端安装 Remote Agent 插件，然后使用工具生成 Token：
+
+```
+调用: remote_agent.generate_token
+参数: {}
+
+返回:
+{
+  "token": "agent-abc123def456...",
+  "note": "请在 openclaw.json 插件配置中添加: token: \"agent-abc123def456...\"",
+  "server_url": "ws://<openclaw服务器地址>:8765/agent/ws",
+  "client_config": "在客户端 agent.yml 中配置: auth.token: \"agent-abc123def456...\""
+}
+```
+
+### 步骤四：配置文件
 
 
 编辑 `config/agent.yml`：
 
 ```yaml
-# 设备 ID（必须与服务端配置的 key 匹配）
+# 设备 ID（自定义，用于标识这台设备）
 agent_id: "台式机"
 
 # OpenClaw 服务器 WebSocket 地址
 server_url: "ws://your-server.com:8765"
 
-# 认证配置
+# 认证配置（Token 必须与服务端配置一致）
 auth:
-  token: "agent-desktop-xxx"
+  token: "agent-your-token-here"
 
 # 可选：功能开关 (未实现)
 capabilities:
@@ -192,7 +217,7 @@ capabilities:
   file_operations: true
 ```
 
-### 步骤四：运行客户端
+### 步骤五：运行客户端
 
 ```bash
 # 开发模式运行
@@ -202,7 +227,7 @@ cargo run
 ./target/release/claw-agent-client-rs
 ```
 
-### 步骤五：验证连接
+### 步骤六：验证连接
 
 客户端成功连接后，服务端日志会显示设备上线信息：
 
@@ -221,15 +246,15 @@ cargo run
 # 必填配置项
 # ==========================================
 
-# 设备唯一标识符
-agent_id: "设备名称"
+# 设备唯一标识符（自定义，用于标识这台设备）
+agent_id: "台式机"
 
 # OpenClaw 服务器地址（WebSocket）
 server_url: "ws://服务器地址:8765"
 
-# 认证令牌（与服务端配置匹配）
+# 认证令牌（必须与服务端配置一致）
 auth:
-  token: "agent-xxx"
+  token: "agent-your-token-here"
 
 # ==========================================
 # 可选配置项
@@ -239,9 +264,9 @@ auth:
 capabilities:
   system_info: true        # 系统信息查询
   process_control: true    # 进程控制
-  env_management: true     # 环境变量管理
+  env_management: true    # 环境变量管理
   software_install: true   # 软件安装卸载
-  file_operations: true    # 文件操作
+  file_operations: true   # 文件操作
 
 ```
 
@@ -441,7 +466,7 @@ capabilities:
 {
   "type": "auth",
   "agent_id": "台式机",
-  "token": "agent-desktop-xxx"
+  "token": "agent-your-token"
 }
 ```
 
@@ -453,6 +478,26 @@ capabilities:
   "success": true,
   "session_id": "uuid",
   "message": "认证成功"
+}
+```
+
+如果认证失败：
+
+```json
+{
+  "type": "auth_response",
+  "success": false,
+  "message": "Invalid token"
+}
+```
+
+如果客户端已在线：
+
+```json
+{
+  "type": "auth_response",
+  "success": false,
+  "message": "Agent is already connected. Only one client per agent is allowed."
 }
 ```
 
@@ -490,23 +535,9 @@ capabilities:
 
 #### 5. 心跳（Ping/Pong）
 
-服务端 → 客户端：
+服务端 → 客户端：WebSocket 原生 Ping 帧
 
-```json
-{
-  "type": "ping"
-}
-```
-
-客户端 → 服务端：
-
-```json
-{
-  "type": "pong"
-}
-```
-
-（实际实现中使用 WebSocket 原生 Ping/Pong 帧）
+客户端 → 服务端：WebSocket 原生 Pong 帧
 
 ---
 
@@ -540,15 +571,24 @@ tail -f log/cmd.log
 
 #### 2. 认证失败
 
-**症状**：服务端返回 "Authentication failed"
+**症状**：服务端返回 "Invalid token"
 
 **排查步骤**：
 
-1. 确认 `agent_id` 与服务端配置一致
-2. 确认 `token` 与服务端配置完全匹配
-3. 检查配置文件中是否有多余空格或换行
+1. 确认客户端 `token` 与服务端配置完全一致
+2. 检查配置文件中是否有多余空格或换行
 
-#### 3. 命令执行超时
+#### 3. 客户端已在线被拒绝
+
+**症状**：服务端返回 "Agent is already connected. Only one client per agent is allowed."
+
+**说明**：这是正常行为，同一 agent_id 只能有一个在线连接
+
+**解决**：
+1. 确认没有其他客户端使用相同 agent_id
+2. 如果是之前连接断开后重连失败，请等待几秒后再试
+
+#### 4. 命令执行超时
 
 **症状**：发送命令后长时间无响应
 
@@ -568,7 +608,7 @@ tail -f log/cmd.log
 - 网络延迟过高
 - 命令阻塞
 
-#### 4. 权限不足
+#### 5. 权限不足
 
 **症状**：部分操作返回权限错误
 
@@ -587,4 +627,3 @@ tail -f log/cmd.log
 - **服务端插件仓库**：https://gitee.com/yuzhanfeng/claw-remote-agent-plugin.git
 - **服务端插件仓库**：https://github.com/easy-do/claw-remote-agent-plugin.git
 - **OpenClaw 文档**：https://docs.openclaw.ai
-
