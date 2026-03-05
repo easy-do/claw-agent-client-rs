@@ -1,10 +1,10 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::signal;
-use cross_platform_agent_rs::{init_logging, load_config, run_server};
+use claw_agent_client_rs::{init_logging, load_config, run_server};
 
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
-use cross_platform_agent_rs::platform;
+use claw_agent_client_rs::platform;
 
 #[tokio::main]
 async fn main() -> Result<()> {
