@@ -316,13 +316,71 @@ impl Platform for MacOSPlatform {
     }
     
     async fn read_file(&self, path: &str) -> AgentResult<String> {
-        let content = std::fs::read_to_string(path)?;
-        Ok(content)
+        let options = FileReadOptions::default();
+        let result = self.read_file_with_options(path, options).await?;
+        Ok(result.content)
+    }
+    
+    async fn read_file_with_options(&self, path: &str, options: FileReadOptions) -> AgentResult<FileReadResult> {
+        let metadata = std::fs::metadata(path)?;
+        let file_size = metadata.len();
+        
+        let max_size = options.max_size.unwrap_or(DEFAULT_MAX_FILE_SIZE);
+        
+        if file_size > max_size {
+            return Err(AgentError::Io(format!(
+                "File size {} bytes exceeds maximum allowed size {} bytes",
+                file_size, max_size
+            )).into());
+        }
+        
+        let bytes = std::fs::read(path)?;
+        let size_bytes = bytes.len() as u64;
+        
+        let is_text = bytes.iter().take(8000).all(|&b| {
+            b < 128 || b == b'\n' || b == b'\r' || b == b'\t'
+        });
+        
+        if is_text {
+            let content = String::from_utf8_lossy(&bytes).to_string();
+            Ok(FileReadResult {
+                content,
+                is_base64: false,
+                size_bytes,
+                truncated: false,
+            })
+        } else {
+            use base64::Engine;
+            let content = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            Ok(FileReadResult {
+                content,
+                is_base64: true,
+                size_bytes,
+                truncated: false,
+            })
+        }
     }
     
     async fn write_file(&self, path: &str, content: &str) -> AgentResult<()> {
-        std::fs::write(path, content)?;
+        let options = FileWriteOptions::default();
+        self.write_file_with_options(path, content, options).await?;
         Ok(())
+    }
+    
+    async fn write_file_with_options(&self, path: &str, content: &str, options: FileWriteOptions) -> AgentResult<FileWriteResult> {
+        if options.append {
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?;
+            file.write_all(content.as_bytes())?;
+        } else {
+            std::fs::write(path, content)?;
+        }
+        
+        let bytes_written = content.len() as u64;
+        Ok(FileWriteResult { bytes_written })
     }
     
     async fn delete_file(&self, path: &str) -> AgentResult<()> {

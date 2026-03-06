@@ -75,7 +75,11 @@ pub trait Platform: Send + Sync {
     
     async fn read_file(&self, path: &str) -> AgentResult<String>;
     
+    async fn read_file_with_options(&self, path: &str, options: FileReadOptions) -> AgentResult<FileReadResult>;
+    
     async fn write_file(&self, path: &str, content: &str) -> AgentResult<()>;
+    
+    async fn write_file_with_options(&self, path: &str, content: &str, options: FileWriteOptions) -> AgentResult<FileWriteResult>;
     
     async fn delete_file(&self, path: &str) -> AgentResult<()>;
     

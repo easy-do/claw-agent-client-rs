@@ -1,5 +1,50 @@
 use serde::{Deserialize, Serialize};
 
+pub const DEFAULT_MAX_FILE_SIZE: u64 = 10 * 1024;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileReadOptions {
+    pub max_size: Option<u64>,
+    pub encoding: Option<String>,
+}
+
+impl Default for FileReadOptions {
+    fn default() -> Self {
+        Self {
+            max_size: Some(DEFAULT_MAX_FILE_SIZE),
+            encoding: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileReadResult {
+    pub content: String,
+    pub is_base64: bool,
+    pub size_bytes: u64,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileWriteOptions {
+    pub append: bool,
+    pub encoding: Option<String>,
+}
+
+impl Default for FileWriteOptions {
+    fn default() -> Self {
+        Self {
+            append: false,
+            encoding: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileWriteResult {
+    pub bytes_written: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfo {
     pub hostname: String,
