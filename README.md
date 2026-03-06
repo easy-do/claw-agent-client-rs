@@ -118,6 +118,8 @@ claw-agent-client-rs 是一个 Rust 编写的跨平台代理客户端，配合 O
 | `software.list` | 列出已安装软件 | 无 |
 | `env.list` | 列出环境变量 | `scope`（user/system/session） |
 | `file.list` | 列出文件 | `path` |
+| `file.read` | 读取文件内容 | `path`, `max_size`, `encoding` |
+| `file.write` | 写入文件内容 | `path`, `content`, `append`, `encoding` |
 
 ### 平台特定功能
 
@@ -434,6 +436,73 @@ capabilities:
     "modified": 1704067200
   }
 ]
+```
+
+### file.read
+
+读取文件内容（文本或二进制转Base64）：
+
+```json
+{
+  "action": "file.read",
+  "params": {
+    "path": "C:\\test\\file.txt",
+    "max_size": 10485760,
+    "encoding": "utf-8"
+  }
+}
+```
+
+参数说明：
+- `path`：文件路径（必填）
+- `max_size`：最大读取字节数，默认 10485760（10MB），超过则返回错误
+- `encoding`：字符编码（可选，默认 utf-8）
+
+返回：
+
+```json
+{
+  "content": "文件内容...",
+  "is_base64": false,
+  "size_bytes": 1024,
+  "truncated": false
+}
+```
+
+返回字段说明：
+- `content`：文件内容（文本直接返回，二进制返回Base64编码）
+- `is_base64`：是否为Base64编码（二进制文件为true）
+- `size_bytes`：文件大小（字节）
+- `truncated`：是否被截断
+
+### file.write
+
+写入文件内容：
+
+```json
+{
+  "action": "file.write",
+  "params": {
+    "path": "C:\\test\\output.txt",
+    "content": "要写入的内容",
+    "append": false,
+    "encoding": "utf-8"
+  }
+}
+```
+
+参数说明：
+- `path`：文件路径（必填）
+- `content`：写入内容（必填）
+- `append`：是否追加模式，默认 false（覆盖写入）
+- `encoding`：字符编码（可选，默认 utf-8）
+
+返回：
+
+```json
+{
+  "bytes_written": 1024
+}
 ```
 
 ---
