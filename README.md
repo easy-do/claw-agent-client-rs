@@ -167,97 +167,97 @@ capabilities:
 
 ## 支持命令
 
-### capabilities
+### capabilities 获取客户端能力
 ```json
 { "action": "capabilities", "params": {} }
 ```
 
-### system.info
+### system.info 获取系统信息
 ```json
 { "action": "system.info", "params": {} }
 ```
 
-### shell.execute
+### shell.execute 执行Shell命令
 ```json
 { "action": "shell.execute", "params": { "command": "dir", "timeout": 30 } }
 ```
 
-### process.list
+### process.list 列出进程
 ```json
 { "action": "process.list", "params": {} }
 ```
 
-### process.stop
+### process.stop 停止进程
 ```json
 { "action": "process.stop", "params": { "pid": 1234, "force": false } }
 ```
 
-### software.list
+### software.list 列出已安装软件
 ```json
 { "action": "software.list", "params": {} }
 ```
 
-### software.search
+### software.search 搜索软件
 ```json
 { "action": "software.search", "params": { "query": "chrome" } }
 ```
 
-### software.install
+### software.install 安装软件
 ```json
 { "action": "software.install", "params": { "package": "Google Chrome", "silent": true } }
 ```
 
-### software.uninstall
+### software.uninstall 卸载软件
 ```json
 { "action": "software.uninstall", "params": { "package": "Google Chrome" } }
 ```
 
-### env.list
+### env.list 列出环境变量
 ```json
 { "action": "env.list", "params": { "scope": "user" } }
 ```
 
-### env.get
+### env.get 获取环境变量
 ```json
 { "action": "env.get", "params": { "name": "PATH", "scope": "user" } }
 ```
 
-### env.set
+### env.set 设置环境变量
 ```json
 { "action": "env.set", "params": { "name": "TEST", "value": "123", "scope": "user" } }
 ```
 
-### env.delete
+### env.delete 删除环境变量
 ```json
 { "action": "env.delete", "params": { "name": "TEST", "scope": "user" } }
 ```
 
-### file.list
+### file.list 列出文件
 ```json
 { "action": "file.list", "params": { "path": "C:\\Users" } }
 ```
 
-### file.read
+### file.read 读取文件内容
 ```json
 { "action": "file.read", "params": { "path": "C:\\test\\file.txt" } }
 ```
 
-### file.write
+### file.write 写入文件内容
 ```json
 { "action": "file.write", "params": { "path": "C:\\test\\file.txt", "content": "hello" } }
 ```
 
-### config.get
+### config.get 获取配置
 ```json
 { "action": "config.get", "params": { "path": "HKEY_CURRENT_USER\\Software\\Microsoft" } }
 ```
 
-### config.set
+### config.set 设置配置
 ```json
 { "action": "config.set", "params": { "path": "HKEY_CURRENT_USER\\Test", "value": "123" } }
 ```
 
-### system.reboot
+### system.reboot 重启系统
 ```json
 { "action": "system.reboot", "params": {} }
 ```
