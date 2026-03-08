@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::signal;
-use claw_agent_client_rs::{init_logging, load_config, run_server};
+use claw_agent_client_rs::{init_logging, load_config, run_client};
 
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 use claw_agent_client_rs::platform;
@@ -28,7 +28,7 @@ async fn main() -> Result<()> {
     tracing::info!("Agent ID: {}", agent_id);
     tracing::info!("Token: {}", token);
 
-    let server = run_server(config.clone());
+    let server = run_client(config.clone());
     
     let shutdown = async {
         signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");

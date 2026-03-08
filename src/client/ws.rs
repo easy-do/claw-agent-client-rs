@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use crate::config::AgentConfig;
+use crate::client::Command;
 
 fn log_command_to_file(action: &str, params: &serde_json::Value) {
     let log_path = std::path::Path::new("log/cmd.log");
@@ -175,7 +176,6 @@ pub async fn connect(url: &str, config: Arc<AgentConfig>) -> Result<(), anyhow::
                         }
                     }
                     Some(Ok(Message::Ping(data))) => {
-                        // tracing::info!("Received Ping, queuing Pong response");
                         let _ = cmd_tx.send(OutgoingMessage::PingPong(InternalMessage::Pong(data))).await;
                     }
                     Some(Ok(Message::Close(_))) => {
@@ -201,105 +201,8 @@ pub async fn connect(url: &str, config: Arc<AgentConfig>) -> Result<(), anyhow::
 }
 
 async fn execute_command(action: &str, params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
-    let result = match action {
-        "system.info" => {
-            let platform = crate::platform::get_platform();
-            let info = platform.get_system_info().await?;
-            let json = serde_json::json!({
-                "hostname": info.hostname,
-                "os_type": info.os_type,
-                "os_version": info.os_version,
-                "arch": info.arch,
-                "username": info.username,
-                "uptime_secs": info.uptime_secs,
-                "total_memory_gb": info.total_memory_gb,
-                "available_memory_gb": info.available_memory_gb,
-                "cpu_count": info.cpu_count,
-                "cpu_usage_percent": info.cpu_usage_percent,
-            });
-            json
-        }
-        "process.list" => {
-            let platform = crate::platform::get_platform();
-            let processes = platform.list_processes().await?;
-            let list: Vec<serde_json::Value> = processes.into_iter().map(|p| {
-                serde_json::json!({
-                    "pid": p.pid,
-                    "name": p.name,
-                    "cmd": p.cmd,
-                    "cpu_percent": p.cpu_percent,
-                    "memory_mb": p.memory_mb,
-                    "status": p.status
-                })
-            }).collect();
-            serde_json::to_value(list)?
-        }
-        "software.list" => {
-            let platform = crate::platform::get_platform();
-            let software = platform.list_software().await?;
-            let list: Vec<serde_json::Value> = software.into_iter().map(|s| {
-                serde_json::json!({
-                    "name": s.name,
-                    "version": s.version,
-                    "publisher": s.publisher,
-                    "install_path": s.install_path
-                })
-            }).collect();
-            serde_json::to_value(list)?
-        }
-        "env.list" => {
-            let scope = params.get("scope")
-                .and_then(|v| v.as_str())
-                .unwrap_or("user");
-            let scope = match scope {
-                "system" => crate::platform::types::EnvScope::System,
-                "session" => crate::platform::types::EnvScope::Session,
-                _ => crate::platform::types::EnvScope::User,
-            };
-            let platform = crate::platform::get_platform();
-            let vars = platform.list_env_vars(scope).await?;
-            let list: Vec<serde_json::Value> = vars.into_iter().map(|(k, v)| {
-                serde_json::json!({
-                    "name": k,
-                    "value": v
-                })
-            }).collect();
-            serde_json::to_value(list)?
-        }
-        "file.list" => {
-            let path = params.get("path")
-                .and_then(|v| v.as_str())
-                .unwrap_or(".");
-            let platform = crate::platform::get_platform();
-            let files = platform.list_dir(path).await?;
-            let list: Vec<serde_json::Value> = files.into_iter().map(|f| {
-                serde_json::json!({
-                    "name": f.name,
-                    "path": f.path,
-                    "is_dir": f.is_dir,
-                    "size_bytes": f.size_bytes,
-                    "modified": f.modified
-                })
-            }).collect();
-            serde_json::to_value(list)?
-        }
-        "shell.execute" => {
-            let command = params.get("command")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("Missing command parameter"))?;
-
-            let timeout_secs = params.get("timeout")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(30);
-
-            let platform = crate::platform::get_platform();
-            let result = platform.shell_execute(command, timeout_secs).await?;
-            result
-        }
-        _ => {
-            return Err(anyhow::anyhow!("Unknown action: {}", action));
-        }
-    };
+    let command = Command::from_str(action)
+        .ok_or_else(|| anyhow::anyhow!("Unknown action: {}", action))?;
     
-    Ok(result)
+    command.execute(params).await
 }

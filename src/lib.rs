@@ -1,13 +1,13 @@
 pub mod utils;
 pub mod config;
 pub mod auth;
-pub mod server;
+pub mod client;
 
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 pub mod platform;
 
 pub use config::{load_config, AgentConfig, init_logging};
-pub use server::run_server;
+pub use client::run_client;
 
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 pub use platform::traits::{Platform, get_platform, platform_name};

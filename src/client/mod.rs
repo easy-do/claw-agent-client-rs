@@ -1,22 +1,24 @@
-pub mod client;
+pub mod command;
 
-pub use client::*;
+pub mod ws;
+
+pub use command::Command;
 
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 use crate::config::AgentConfig;
 
-pub async fn run_server(config: Arc<AgentConfig>) -> Result<(), anyhow::Error> {
+pub async fn run_client(config: Arc<AgentConfig>) -> Result<(), anyhow::Error> {
     let server_url = config.server_url.clone()
         .ok_or_else(|| anyhow::anyhow!("server_url is required"))?;
     
     let ws_url = format!("{}/agent/ws", server_url);
     
     loop {
-        tracing::info!("Connecting to OpenClaw server: {}", ws_url);
+        tracing::info!("Connecting to Agent server: {}", ws_url);
         
-        match client::connect(&ws_url, config.clone()).await {
+        match ws::connect(&ws_url, config.clone()).await {
             Ok(_) => {
                 tracing::info!("Connection closed normally");
                 break;
