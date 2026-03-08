@@ -7,6 +7,24 @@ pub enum Command {
     EnvList,
     FileList,
     ShellExecute,
+    SearchSoftware,
+    InstallSoftware,
+    UninstallSoftware,
+    GetEnvVar,
+    SetEnvVar,
+    DeleteEnvVar,
+    ReadFile,
+    WriteFile,
+    DeleteFile,
+    CreateDir,
+    CopyFile,
+    MoveFile,
+    DownloadFile,
+    GetConfig,
+    SetConfig,
+    Reboot,
+    Shutdown,
+    StopProcess,
 }
 
 impl Command {
@@ -18,6 +36,24 @@ impl Command {
             "env.list" => Some(Command::EnvList),
             "file.list" => Some(Command::FileList),
             "shell.execute" => Some(Command::ShellExecute),
+            "software.search" => Some(Command::SearchSoftware),
+            "software.install" => Some(Command::InstallSoftware),
+            "software.uninstall" => Some(Command::UninstallSoftware),
+            "env.get" => Some(Command::GetEnvVar),
+            "env.set" => Some(Command::SetEnvVar),
+            "env.delete" => Some(Command::DeleteEnvVar),
+            "file.read" => Some(Command::ReadFile),
+            "file.write" => Some(Command::WriteFile),
+            "file.delete" => Some(Command::DeleteFile),
+            "file.create_dir" => Some(Command::CreateDir),
+            "file.copy" => Some(Command::CopyFile),
+            "file.move" => Some(Command::MoveFile),
+            "file.download" => Some(Command::DownloadFile),
+            "config.get" => Some(Command::GetConfig),
+            "config.set" => Some(Command::SetConfig),
+            "system.reboot" => Some(Command::Reboot),
+            "system.shutdown" => Some(Command::Shutdown),
+            "process.stop" => Some(Command::StopProcess),
             _ => None,
         }
     }
@@ -30,6 +66,24 @@ impl Command {
             Command::EnvList => execute_env_list(params).await,
             Command::FileList => execute_file_list(params).await,
             Command::ShellExecute => execute_shell(params).await,
+            Command::SearchSoftware => execute_search_software(params).await,
+            Command::InstallSoftware => execute_install_software(params).await,
+            Command::UninstallSoftware => execute_uninstall_software(params).await,
+            Command::GetEnvVar => execute_get_env_var(params).await,
+            Command::SetEnvVar => execute_set_env_var(params).await,
+            Command::DeleteEnvVar => execute_delete_env_var(params).await,
+            Command::ReadFile => execute_read_file(params).await,
+            Command::WriteFile => execute_write_file(params).await,
+            Command::DeleteFile => execute_delete_file(params).await,
+            Command::CreateDir => execute_create_dir(params).await,
+            Command::CopyFile => execute_copy_file(params).await,
+            Command::MoveFile => execute_move_file(params).await,
+            Command::DownloadFile => execute_download_file(params).await,
+            Command::GetConfig => execute_get_config(params).await,
+            Command::SetConfig => execute_set_config(params).await,
+            Command::Reboot => execute_reboot().await,
+            Command::Shutdown => execute_shutdown().await,
+            Command::StopProcess => execute_stop_process(params).await,
         }
     }
 }
@@ -134,4 +188,246 @@ async fn execute_shell(params: serde_json::Value) -> Result<serde_json::Value, a
     platform.shell_execute(command, timeout_secs)
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))
+}
+
+async fn execute_search_software(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let query = params.get("query")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing query parameter"))?;
+
+    let platform = crate::platform::get_platform();
+    let software = platform.search_software(query).await?;
+    let list: Vec<serde_json::Value> = software.into_iter().map(|s| {
+        serde_json::json!({
+            "name": s.name,
+            "version": s.version,
+            "publisher": s.publisher,
+            "install_path": s.install_path
+        })
+    }).collect();
+    Ok(serde_json::to_value(list)?)
+}
+
+async fn execute_install_software(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let package = params.get("package")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing package parameter"))?;
+
+    let silent = params.get("silent")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let platform = crate::platform::get_platform();
+    platform.install_software(package, silent).await?;
+    Ok(serde_json::json!({ "success": true, "message": format!("Installed {}", package) }))
+}
+
+async fn execute_uninstall_software(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let package = params.get("package")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing package parameter"))?;
+
+    let platform = crate::platform::get_platform();
+    platform.uninstall_software(package).await?;
+    Ok(serde_json::json!({ "success": true, "message": format!("Uninstalled {}", package) }))
+}
+
+async fn execute_get_env_var(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let name = params.get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing name parameter"))?;
+
+    let scope = params.get("scope")
+        .and_then(|v| v.as_str())
+        .unwrap_or("user");
+    let scope = match scope {
+        "system" => EnvScope::System,
+        "session" => EnvScope::Session,
+        _ => EnvScope::User,
+    };
+
+    let platform = crate::platform::get_platform();
+    let value = platform.get_env_var(name, scope).await?;
+    Ok(serde_json::json!({ "name": name, "value": value }))
+}
+
+async fn execute_set_env_var(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let name = params.get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing name parameter"))?;
+
+    let value = params.get("value")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing value parameter"))?;
+
+    let scope = params.get("scope")
+        .and_then(|v| v.as_str())
+        .unwrap_or("user");
+    let scope = match scope {
+        "system" => EnvScope::System,
+        "session" => EnvScope::Session,
+        _ => EnvScope::User,
+    };
+
+    let platform = crate::platform::get_platform();
+    platform.set_env_var(name, value, scope).await?;
+    Ok(serde_json::json!({ "success": true, "message": format!("Set {}={}", name, value) }))
+}
+
+async fn execute_delete_env_var(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let name = params.get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing name parameter"))?;
+
+    let scope = params.get("scope")
+        .and_then(|v| v.as_str())
+        .unwrap_or("user");
+    let scope = match scope {
+        "system" => EnvScope::System,
+        "session" => EnvScope::Session,
+        _ => EnvScope::User,
+    };
+
+    let platform = crate::platform::get_platform();
+    platform.delete_env_var(name, scope).await?;
+    Ok(serde_json::json!({ "success": true, "message": format!("Deleted {}", name) }))
+}
+
+async fn execute_read_file(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let path = params.get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing path parameter"))?;
+
+    let platform = crate::platform::get_platform();
+    let content = platform.read_file(path).await?;
+    Ok(serde_json::json!({ "path": path, "content": content }))
+}
+
+async fn execute_write_file(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let path = params.get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing path parameter"))?;
+
+    let content = params.get("content")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing content parameter"))?;
+
+    let platform = crate::platform::get_platform();
+    platform.write_file(path, content).await?;
+    Ok(serde_json::json!({ "success": true, "message": format!("Wrote to {}", path) }))
+}
+
+async fn execute_delete_file(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let path = params.get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing path parameter"))?;
+
+    let platform = crate::platform::get_platform();
+    platform.delete_file(path).await?;
+    Ok(serde_json::json!({ "success": true, "message": format!("Deleted {}", path) }))
+}
+
+async fn execute_create_dir(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let path = params.get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing path parameter"))?;
+
+    let recursive = params.get("recursive")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let platform = crate::platform::get_platform();
+    platform.create_dir(path, recursive).await?;
+    Ok(serde_json::json!({ "success": true, "message": format!("Created directory {}", path) }))
+}
+
+async fn execute_copy_file(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let src = params.get("src")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing src parameter"))?;
+
+    let dst = params.get("dst")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing dst parameter"))?;
+
+    let platform = crate::platform::get_platform();
+    platform.copy_file(src, dst).await?;
+    Ok(serde_json::json!({ "success": true, "message": format!("Copied {} to {}", src, dst) }))
+}
+
+async fn execute_move_file(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let src = params.get("src")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing src parameter"))?;
+
+    let dst = params.get("dst")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing dst parameter"))?;
+
+    let platform = crate::platform::get_platform();
+    platform.move_file(src, dst).await?;
+    Ok(serde_json::json!({ "success": true, "message": format!("Moved {} to {}", src, dst) }))
+}
+
+async fn execute_download_file(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let url = params.get("url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing url parameter"))?;
+
+    let dest = params.get("dest")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing dest parameter"))?;
+
+    let platform = crate::platform::get_platform();
+    let path = platform.download_file(url, dest).await?;
+    Ok(serde_json::json!({ "success": true, "path": path }))
+}
+
+async fn execute_get_config(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let path = params.get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing path parameter"))?;
+
+    let platform = crate::platform::get_platform();
+    let value = platform.get_config(path).await?;
+    Ok(value)
+}
+
+async fn execute_set_config(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let path = params.get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing path parameter"))?;
+
+    let value = params.get("value")
+        .ok_or_else(|| anyhow::anyhow!("Missing value parameter"))?;
+
+    let platform = crate::platform::get_platform();
+    platform.set_config(path, value.clone()).await?;
+    Ok(serde_json::json!({ "success": true, "message": format!("Set config {}", path) }))
+}
+
+async fn execute_reboot() -> Result<serde_json::Value, anyhow::Error> {
+    let platform = crate::platform::get_platform();
+    platform.reboot().await?;
+    Ok(serde_json::json!({ "success": true, "message": "Reboot initiated" }))
+}
+
+async fn execute_shutdown() -> Result<serde_json::Value, anyhow::Error> {
+    let platform = crate::platform::get_platform();
+    platform.shutdown().await?;
+    Ok(serde_json::json!({ "success": true, "message": "Shutdown initiated" }))
+}
+
+async fn execute_stop_process(params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    let pid = params.get("pid")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| anyhow::anyhow!("Missing pid parameter"))?;
+
+    let force = params.get("force")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let platform = crate::platform::get_platform();
+    platform.stop_process(pid as u32, force).await?;
+    Ok(serde_json::json!({ "success": true, "message": format!("Stopped process {}", pid) }))
 }

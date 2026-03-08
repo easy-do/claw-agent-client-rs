@@ -53,45 +53,6 @@ impl Platform for WindowsPlatform {
         ))
     }
     
-    async fn start_process(
-        &self,
-        program: &str,
-        args: &[String],
-        elevated: bool,
-        working_dir: Option<&str>,
-    ) -> AgentResult<u32> {
-        if elevated {
-            let ps_args = format!(
-                "Start-Process '{}' -ArgumentList '{}' -Verb RunAs -PassThru -WorkingDirectory '{}' | Select-Object -ExpandProperty Id",
-                program,
-                args.join(" "),
-                working_dir.unwrap_or(".")
-            );
-            let output = Command::new("powershell")
-                .args(&["-Command", &ps_args])
-                .output()?;
-            
-            if !output.status.success() {
-                return Err(AgentError::Command(
-                    format!("Elevated start failed: {}", String::from_utf8_lossy(&output.stderr))
-                ).into());
-            }
-            
-            let pid = String::from_utf8_lossy(&output.stdout)
-                .trim()
-                .parse::<u32>()?;
-            Ok(pid)
-        } else {
-            let mut cmd = Command::new(program);
-            cmd.args(args);
-            if let Some(dir) = working_dir {
-                cmd.current_dir(dir);
-            }
-            let pid = cmd.spawn()?.id();
-            Ok(pid)
-        }
-    }
-    
     async fn stop_process(&self, pid: u32, force: bool) -> AgentResult<()> {
         let flag = if force { "/F" } else { "" };
         let output = Command::new("taskkill")
@@ -104,16 +65,6 @@ impl Platform for WindowsPlatform {
             ).into());
         }
         Ok(())
-    }
-    
-    async fn find_process(&self, name: &str) -> AgentResult<Option<ProcessInfo>> {
-        let processes = self.list_processes().await?;
-        Ok(processes.into_iter().find(|p| p.name.eq_ignore_ascii_case(name)))
-    }
-    
-    async fn get_process_info(&self, pid: u32) -> AgentResult<Option<ProcessInfo>> {
-        let processes = self.list_processes().await?;
-        Ok(processes.into_iter().find(|p| p.pid == pid))
     }
     
     async fn get_env_var(&self, name: &str, scope: EnvScope) -> AgentResult<Option<String>> {
@@ -138,24 +89,6 @@ impl Platform for WindowsPlatform {
     
     async fn set_config(&self, path: &str, value: serde_json::Value) -> AgentResult<()> {
         write_registry_value(path, value).await
-    }
-    
-    async fn toggle_feature(&self, feature: &str, enabled: bool) -> AgentResult<()> {
-        let action = if enabled { "Enable" } else { "Disable" };
-        let ps_cmd = format!(
-            "{}-WindowsOptionalFeature -Online -FeatureName {} -NoRestart",
-            action, feature
-        );
-        let output = Command::new("powershell")
-            .args(&["-Command", &ps_cmd])
-            .output()?;
-        
-        if !output.status.success() {
-            return Err(AgentError::Command(
-                format!("Feature toggle failed: {}", String::from_utf8_lossy(&output.stderr))
-            ).into());
-        }
-        Ok(())
     }
     
     async fn list_software(&self) -> AgentResult<Vec<SoftwarePackage>> {
@@ -199,45 +132,8 @@ impl Platform for WindowsPlatform {
         Ok(())
     }
     
-    async fn update_software(&self, package: Option<&str>) -> AgentResult<()> {
-        let args = match package {
-            Some(pkg) => vec!["upgrade", "--id", pkg, "--silent"],
-            None => vec!["upgrade", "--all", "--silent"],
-        };
-        
-        Command::new("winget").args(&args).output()?;
-        Ok(())
-    }
-    
-    async fn check_updates(&self) -> AgentResult<Vec<SoftwarePackage>> {
-        check_winget_updates().await
-    }
-    
-    fn get_default_browser(&self) -> BrowserType {
-        get_default_browser_impl().unwrap_or(BrowserType::Edge)
-    }
-    
-    async fn launch_browser(&self, browser: BrowserType, url: &str) -> AgentResult<()> {
-        let browser_path = get_browser_path(browser)?;
-        Command::new(browser_path).arg(url).spawn()?;
-        Ok(())
-    }
-    
-    async fn close_browser(&self, browser: BrowserType) -> AgentResult<()> {
-        let process_name = get_browser_process_name(browser);
-        let processes = self.list_processes().await?;
-        for proc in processes.iter().filter(|p| p.name.eq_ignore_ascii_case(process_name)) {
-            self.stop_process(proc.pid, false).await?;
-        }
-        Ok(())
-    }
-    
     fn get_program_files_dir(&self) -> String {
         std::env::var("ProgramFiles")
             .unwrap_or_else(|_| r"C:\Program Files".to_string())
-    }
-    
-    fn is_elevated(&self) -> bool {
-        is_elevated_impl()
     }
 }

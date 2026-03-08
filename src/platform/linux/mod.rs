@@ -55,32 +55,6 @@ impl Platform for LinuxPlatform {
         ))
     }
     
-    async fn start_process(
-        &self,
-        program: &str,
-        args: &[String],
-        elevated: bool,
-        working_dir: Option<&str>,
-    ) -> AgentResult<u32> {
-        if elevated {
-            let mut cmd = Command::new("sudo");
-            cmd.arg(program).args(args);
-            if let Some(dir) = working_dir {
-                cmd.current_dir(dir);
-            }
-            let pid = cmd.spawn()?.id();
-            Ok(pid)
-        } else {
-            let mut cmd = Command::new(program);
-            cmd.args(args);
-            if let Some(dir) = working_dir {
-                cmd.current_dir(dir);
-            }
-            let pid = cmd.spawn()?.id();
-            Ok(pid)
-        }
-    }
-    
     async fn stop_process(&self, pid: u32, force: bool) -> AgentResult<()> {
         let signal = if force { "-9" } else { "-15" };
         Command::new("kill").arg(signal).arg(pid.to_string()).output()?;
@@ -123,14 +97,6 @@ impl Platform for LinuxPlatform {
     
     async fn set_config(&self, path: &str, value: serde_json::Value) -> AgentResult<()> {
         std::fs::write(path, value.to_string())?;
-        Ok(())
-    }
-    
-    async fn toggle_feature(&self, feature: &str, enabled: bool) -> AgentResult<()> {
-        let action = if enabled { "enable" } else { "disable" };
-        Command::new("systemctl")
-            .args(&[action, "--now", feature])
-            .output()?;
         Ok(())
     }
     
@@ -256,108 +222,7 @@ impl Platform for LinuxPlatform {
         return Err(AgentError::Platform("No package manager available".to_string()));
     }
     
-    async fn update_software(&self, package: Option<&str>) -> AgentResult<()> {
-        if which::which("apt-get").is_ok() {
-            Command::new("apt-get").arg("update").output()?;
-            
-            let args = match package {
-                Some(pkg) => vec!["install", "--only-upgrade", "-y", pkg],
-                None => vec!["upgrade", "-y"],
-            };
-            
-            Command::new("apt-get").args(&args).output()?;
-            return Ok(());
-        }
-        
-        if which::which("dnf").is_ok() {
-            let args = match package {
-                Some(pkg) => vec!["upgrade", "-y", pkg],
-                None => vec!["upgrade", "-y"],
-            };
-            
-            Command::new("dnf").args(&args).output()?;
-            return Ok(());
-        }
-        
-        if which::which("pacman").is_ok() {
-            Command::new("pacman").args(&["-Syu", "--noconfirm"]).output()?;
-            return Ok(());
-        }
-        
-        if which::which("zypper").is_ok() {
-            let args = match package {
-                Some(pkg) => vec!["update", pkg],
-                None => vec!["update"],
-            };
-            
-            Command::new("zypper").args(&args).output()?;
-            return Ok(());
-        }
-        
-        return Err(AgentError::Platform("No package manager available".to_string()));
-    }
-    
-    async fn check_updates(&self) -> AgentResult<Vec<SoftwarePackage>> {
-        check_updates_impl().await
-    }
-    
-    fn get_default_browser(&self) -> BrowserType {
-        let output = Command::new("xdg-settings")
-            .args(&["get", "default-web-browser"])
-            .output()
-            .ok();
-        
-        if let Some(out) = output {
-            let browser = String::from_utf8_lossy(&out.stdout).trim().to_lowercase();
-            if browser.contains("chrome") {
-                return BrowserType::Chrome;
-            } else if browser.contains("firefox") {
-                return BrowserType::Firefox;
-            } else if browser.contains("edge") {
-                return BrowserType::Edge;
-            } else if browser.contains("brave") {
-                return BrowserType::Brave;
-            }
-        }
-        
-        BrowserType::Firefox
-    }
-    
-    async fn launch_browser(&self, browser: BrowserType, url: &str) -> AgentResult<()> {
-        if which::which("xdg-open").is_ok() {
-            Command::new("xdg-open").arg(url).output()?;
-        } else {
-            let browser_cmd = match browser {
-                BrowserType::Chrome => "google-chrome",
-                BrowserType::Firefox => "firefox",
-                BrowserType::Safari => return Err(AgentError::NotSupported("Safari not supported on Linux".to_string()).into()),
-                BrowserType::Edge => "microsoft-edge",
-                BrowserType::Brave => "brave",
-            };
-            Command::new(browser_cmd).arg(url).output()?;
-        }
-        
-        Ok(())
-    }
-    
-    async fn close_browser(&self, browser: BrowserType) -> AgentResult<()> {
-        let process_name = match browser {
-            BrowserType::Chrome => "chrome",
-            BrowserType::Firefox => "firefox",
-            BrowserType::Safari => "safari",
-            BrowserType::Edge => "msedge",
-            BrowserType::Brave => "brave",
-        };
-        
-        Command::new("pkill").arg(process_name).output()?;
-        Ok(())
-    }
-    
     fn get_program_files_dir(&self) -> String {
         "/usr/bin".to_string()
-    }
-    
-    fn is_elevated(&self) -> bool {
-        is_elevated_impl()
     }
 }

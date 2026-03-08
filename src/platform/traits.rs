@@ -29,23 +29,11 @@ pub trait Platform: Send + Sync {
         get_username()
     }
     
-    async fn start_process(
-        &self,
-        program: &str,
-        args: &[String],
-        elevated: bool,
-        working_dir: Option<&str>,
-    ) -> AgentResult<u32>;
-    
     async fn stop_process(&self, pid: u32, force: bool) -> AgentResult<()>;
     
     async fn list_processes(&self) -> AgentResult<Vec<ProcessInfo>>{
         list_processes_impl().await
     }
-    
-    async fn find_process(&self, name: &str) -> AgentResult<Option<ProcessInfo>>;
-    
-    async fn get_process_info(&self, pid: u32) -> AgentResult<Option<ProcessInfo>>;
     
     async fn get_env_var(&self, name: &str, scope: EnvScope) -> AgentResult<Option<String>>;
     
@@ -58,8 +46,6 @@ pub trait Platform: Send + Sync {
     async fn get_config(&self, path: &str) -> AgentResult<serde_json::Value>;
     
     async fn set_config(&self, path: &str, value: serde_json::Value) -> AgentResult<()>;
-    
-    async fn toggle_feature(&self, feature: &str, enabled: bool) -> AgentResult<()>;
     
     async fn reboot(&self) -> AgentResult<()> {
         #[cfg(target_os = "windows")]
@@ -112,16 +98,6 @@ pub trait Platform: Send + Sync {
     async fn install_software(&self, package: &str, silent: bool) -> AgentResult<()>;
     
     async fn uninstall_software(&self, package: &str) -> AgentResult<()>;
-    
-    async fn update_software(&self, package: Option<&str>) -> AgentResult<()>;
-    
-    async fn check_updates(&self) -> AgentResult<Vec<SoftwarePackage>>;
-    
-    fn get_default_browser(&self) -> BrowserType;
-    
-    async fn launch_browser(&self, browser: BrowserType, url: &str) -> AgentResult<()>;
-    
-    async fn close_browser(&self, browser: BrowserType) -> AgentResult<()>;
     
     async fn read_file(&self, path: &str) -> AgentResult<String> {
         read_file_impl(path).await
@@ -186,29 +162,6 @@ pub trait Platform: Send + Sync {
         }
     }
     
-    fn is_elevated(&self) -> bool {
-        #[cfg(windows)]
-        {
-            std::process::Command::new("net")
-                .args(["session"])
-                .output()
-                .map(|output| output.status.success())
-                .unwrap_or(false)
-        }
-        #[cfg(unix)]
-        {
-            unsafe { libc::geteuid() == 0 }
-        }
-        #[cfg(not(any(windows, unix)))]
-        {
-            false
-        }
-    }
-    
-    async fn request_elevation(&self) -> AgentResult<bool> {
-        Ok(false)
-    }
-
     async fn shell_execute(&self, command: &str, timeout_secs: u64) -> AgentResult<serde_json::Value> {
         use std::time::Duration;
         use std::process::Stdio;
