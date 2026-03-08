@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_MAX_FILE_SIZE: u64 = 10 * 1024;
+pub const TEXT_DETECTION_BYTES: usize = 8000;
+pub const BYTES_PER_GB: f64 = 1_073_741_824.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileReadOptions {

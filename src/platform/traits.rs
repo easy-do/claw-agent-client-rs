@@ -1,6 +1,13 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
 use crate::error::AgentResult;
+use crate::platform::common::{
+    list_processes_impl,
+    read_file_with_options_impl, read_file_impl,
+    write_file_with_options_impl, write_file_impl,
+    delete_file_impl, create_dir_impl, copy_file_impl, move_file_impl,
+    list_dir_impl, download_file_impl, get_user_dir_impl
+};
 use crate::platform::types::*;
 
 #[async_trait]
@@ -31,7 +38,9 @@ pub trait Platform: Send + Sync {
     
     async fn stop_process(&self, pid: u32, force: bool) -> AgentResult<()>;
     
-    async fn list_processes(&self) -> AgentResult<Vec<ProcessInfo>>;
+    async fn list_processes(&self) -> AgentResult<Vec<ProcessInfo>>{
+        list_processes_impl().await
+    }
     
     async fn find_process(&self, name: &str) -> AgentResult<Option<ProcessInfo>>;
     
@@ -51,9 +60,49 @@ pub trait Platform: Send + Sync {
     
     async fn toggle_feature(&self, feature: &str, enabled: bool) -> AgentResult<()>;
     
-    async fn reboot(&self) -> AgentResult<()>;
+    async fn reboot(&self) -> AgentResult<()> {
+        #[cfg(target_os = "windows")]
+        {
+            std::process::Command::new("shutdown")
+                .args(&["/r", "/t", "0"])
+                .output()?;
+        }
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("shutdown")
+                .args(&["-r", "now"])
+                .output()?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            std::process::Command::new("shutdown")
+                .args(&["-r", "now"])
+                .output()?;
+        }
+        Ok(())
+    }
     
-    async fn shutdown(&self) -> AgentResult<()>;
+    async fn shutdown(&self) -> AgentResult<()> {
+        #[cfg(target_os = "windows")]
+        {
+            std::process::Command::new("shutdown")
+                .args(&["/s", "/t", "0"])
+                .output()?;
+        }
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("shutdown")
+                .args(&["-h", "now"])
+                .output()?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            std::process::Command::new("shutdown")
+                .args(&["-h", "now"])
+                .output()?;
+        }
+        Ok(())
+    }
     
     async fn list_software(&self) -> AgentResult<Vec<SoftwarePackage>>;
     
@@ -73,35 +122,136 @@ pub trait Platform: Send + Sync {
     
     async fn close_browser(&self, browser: BrowserType) -> AgentResult<()>;
     
-    async fn read_file(&self, path: &str) -> AgentResult<String>;
+    async fn read_file(&self, path: &str) -> AgentResult<String> {
+        read_file_impl(path).await
+    }
     
-    async fn read_file_with_options(&self, path: &str, options: FileReadOptions) -> AgentResult<FileReadResult>;
+    async fn read_file_with_options(&self, path: &str, options: FileReadOptions) -> AgentResult<FileReadResult> {
+        read_file_with_options_impl(path, options).await
+    }
     
-    async fn write_file(&self, path: &str, content: &str) -> AgentResult<()>;
+    async fn write_file(&self, path: &str, content: &str) -> AgentResult<()> {
+        write_file_impl(path, content).await
+    }
     
-    async fn write_file_with_options(&self, path: &str, content: &str, options: FileWriteOptions) -> AgentResult<FileWriteResult>;
+    async fn write_file_with_options(&self, path: &str, content: &str, options: FileWriteOptions) -> AgentResult<FileWriteResult> {
+        write_file_with_options_impl(path, content, options).await
+    }
     
-    async fn delete_file(&self, path: &str) -> AgentResult<()>;
+    async fn delete_file(&self, path: &str) -> AgentResult<()> {
+        delete_file_impl(path).await
+    }
     
-    async fn list_dir(&self, path: &str) -> AgentResult<Vec<FileInfo>>;
+    async fn list_dir(&self, path: &str) -> AgentResult<Vec<FileInfo>> {
+        list_dir_impl(path).await
+    }
     
-    async fn create_dir(&self, path: &str, recursive: bool) -> AgentResult<()>;
+    async fn create_dir(&self, path: &str, recursive: bool) -> AgentResult<()> {
+        create_dir_impl(path, recursive).await
+    }
     
-    async fn copy_file(&self, src: &str, dst: &str) -> AgentResult<()>;
+    async fn copy_file(&self, src: &str, dst: &str) -> AgentResult<()> {
+        copy_file_impl(src, dst).await
+    }
     
-    async fn move_file(&self, src: &str, dst: &str) -> AgentResult<()>;
+    async fn move_file(&self, src: &str, dst: &str) -> AgentResult<()> {
+        move_file_impl(src, dst).await
+    }
     
-    async fn download_file(&self, url: &str, dest: &str) -> AgentResult<String>;
+    async fn download_file(&self, url: &str, dest: &str) -> AgentResult<String> {
+        download_file_impl(url, dest).await
+    }
     
-    fn get_user_dir(&self, dir_type: UserDirType) -> String;
+    fn get_user_dir(&self, dir_type: UserDirType) -> String {
+        get_user_dir_impl(dir_type)
+    }
     
-    fn get_program_files_dir(&self) -> String;
+    fn get_program_files_dir(&self) -> String {
+        #[cfg(target_os = "windows")]
+        {
+            std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".to_string())
+        }
+        #[cfg(target_os = "macos")]
+        {
+            "/Applications".to_string()
+        }
+        #[cfg(target_os = "linux")]
+        {
+            "/usr/bin".to_string()
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+        {
+            String::new()
+        }
+    }
     
-    fn is_elevated(&self) -> bool;
+    fn is_elevated(&self) -> bool {
+        #[cfg(windows)]
+        {
+            std::process::Command::new("net")
+                .args(["session"])
+                .output()
+                .map(|output| output.status.success())
+                .unwrap_or(false)
+        }
+        #[cfg(unix)]
+        {
+            unsafe { libc::geteuid() == 0 }
+        }
+        #[cfg(not(any(windows, unix)))]
+        {
+            false
+        }
+    }
     
-    async fn request_elevation(&self) -> AgentResult<bool>;
+    async fn request_elevation(&self) -> AgentResult<bool> {
+        Ok(false)
+    }
 
-    async fn shell_execute(&self, command: &str, timeout_secs: u64) -> AgentResult<serde_json::Value>;
+    async fn shell_execute(&self, command: &str, timeout_secs: u64) -> AgentResult<serde_json::Value> {
+        use std::time::Duration;
+        use std::process::Stdio;
+        
+        #[cfg(target_os = "windows")]
+        let platform_name = "windows";
+        #[cfg(target_os = "macos")]
+        let platform_name = "macos";
+        #[cfg(target_os = "linux")]
+        let platform_name = "linux";
+        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+        let platform_name = "unknown";
+
+        let output = tokio::time::timeout(
+            Duration::from_secs(timeout_secs),
+            async {
+                #[cfg(target_os = "windows")]
+                {
+                    tokio::process::Command::new("cmd")
+                        .args(&["/c", command])
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .output()
+                        .await
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    tokio::process::Command::new("sh")
+                        .args(&["-c", command])
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .output()
+                        .await
+                }
+            }
+        ).await.map_err(|_| anyhow::anyhow!("Command timed out after {} seconds", timeout_secs))??;
+
+        Ok(serde_json::json!({
+            "stdout": String::from_utf8_lossy(&output.stdout),
+            "stderr": String::from_utf8_lossy(&output.stderr),
+            "exit_code": output.status.code().unwrap_or(-1),
+            "platform": platform_name
+        }))
+    }
 }
 
 pub fn get_platform() -> Box<dyn Platform> {

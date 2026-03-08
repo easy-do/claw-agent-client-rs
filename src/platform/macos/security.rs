@@ -1,4 +1,4 @@
-use crate::platform::types::{BrowserType, FileInfo, SoftwarePackage, UserDirType};
+use crate::platform::types::{BrowserType, SoftwarePackage, UserDirType};
 use crate::error::AgentResult;
 use std::process::Command;
 
@@ -101,57 +101,6 @@ pub async fn check_brew_updates() -> AgentResult<Vec<SoftwarePackage>> {
     }
     
     Ok(packages)
-}
-
-pub async fn list_dir_impl(path: &str) -> AgentResult<Vec<FileInfo>> {
-    let entries = std::fs::read_dir(path)?;
-    let mut files = Vec::new();
-    
-    for entry in entries.flatten() {
-        let metadata = entry.metadata()?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        let path_str = entry.path().to_string_lossy().to_string();
-        
-        files.push(FileInfo {
-            path: path_str,
-            name,
-            size_bytes: metadata.len(),
-            is_dir: metadata.is_dir(),
-            is_file: metadata.is_file(),
-            modified: metadata.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()),
-            created: metadata.created().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()),
-            permissions: Some(if metadata.permissions().readonly() { "readonly".to_string() } else { "writable".to_string() }),
-        });
-    }
-    
-    Ok(files)
-}
-
-pub async fn download_file_impl(url: &str, dest: &str) -> AgentResult<String> {
-    let client = reqwest::Client::new();
-    let response = client.get(url).send().await?;
-    
-    let bytes = response.bytes().await?;
-    std::fs::write(dest, &bytes)?;
-    
-    Ok(dest.to_string())
-}
-
-pub fn get_user_dir_impl(dir_type: UserDirType) -> String {
-    let home = dirs::home_dir().unwrap_or_default();
-    
-    match dir_type {
-        UserDirType::Home => home.to_string_lossy().to_string(),
-        UserDirType::Desktop => home.join("Desktop").to_string_lossy().to_string(),
-        UserDirType::Documents => home.join("Documents").to_string_lossy().to_string(),
-        UserDirType::Downloads => home.join("Downloads").to_string_lossy().to_string(),
-        UserDirType::Pictures => home.join("Pictures").to_string_lossy().to_string(),
-        UserDirType::Music => home.join("Music").to_string_lossy().to_string(),
-        UserDirType::Videos => home.join("Movies").to_string_lossy().to_string(),
-        UserDirType::Temp => std::env::temp_dir().to_string_lossy().to_string(),
-        UserDirType::Cache => home.join("Library/Caches").to_string_lossy().to_string(),
-        UserDirType::Config => home.join("Library/Preferences").to_string_lossy().to_string(),
-    }
 }
 
 pub fn parse_feature_path(feature: &str) -> AgentResult<(String, String)> {

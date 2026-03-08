@@ -1,4 +1,4 @@
-use crate::platform::types::{BrowserType, FileInfo, SoftwarePackage};
+use crate::platform::types::{BrowserType, SoftwarePackage};
 use crate::error::AgentResult;
 use std::process::Command;
 
@@ -193,55 +193,4 @@ pub async fn check_winget_updates() -> AgentResult<Vec<SoftwarePackage>> {
     }
     
     Ok(packages)
-}
-
-pub async fn list_dir_impl(path: &str) -> AgentResult<Vec<FileInfo>> {
-    let entries = std::fs::read_dir(path)?;
-    let mut files = Vec::new();
-    
-    for entry in entries.flatten() {
-        let metadata = entry.metadata()?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        let path_str = entry.path().to_string_lossy().to_string();
-        
-        files.push(FileInfo {
-            path: path_str,
-            name,
-            size_bytes: metadata.len(),
-            is_dir: metadata.is_dir(),
-            is_file: metadata.is_file(),
-            modified: metadata.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()),
-            created: metadata.created().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()),
-            permissions: Some(if metadata.permissions().readonly() { "444" } else { "644" }.to_string()),
-        });
-    }
-    
-    Ok(files)
-}
-
-pub async fn download_file_impl(url: &str, dest: &str) -> AgentResult<String> {
-    let client = reqwest::Client::new();
-    let response = client.get(url).send().await?;
-    
-    let bytes = response.bytes().await?;
-    std::fs::write(dest, &bytes)?;
-    
-    Ok(dest.to_string())
-}
-
-pub fn get_user_dir_impl(dir_type: crate::platform::types::UserDirType) -> String {
-    use crate::platform::types::UserDirType;
-    
-    match dir_type {
-        UserDirType::Home => dirs::home_dir().unwrap_or_default().to_string_lossy().to_string(),
-        UserDirType::Desktop => dirs::desktop_dir().unwrap_or_default().to_string_lossy().to_string(),
-        UserDirType::Documents => dirs::document_dir().unwrap_or_default().to_string_lossy().to_string(),
-        UserDirType::Downloads => dirs::download_dir().unwrap_or_default().to_string_lossy().to_string(),
-        UserDirType::Pictures => dirs::picture_dir().unwrap_or_default().to_string_lossy().to_string(),
-        UserDirType::Music => dirs::audio_dir().unwrap_or_default().to_string_lossy().to_string(),
-        UserDirType::Videos => dirs::video_dir().unwrap_or_default().to_string_lossy().to_string(),
-        UserDirType::Temp => std::env::temp_dir().to_string_lossy().to_string(),
-        UserDirType::Cache => dirs::cache_dir().unwrap_or_default().to_string_lossy().to_string(),
-        UserDirType::Config => dirs::config_dir().unwrap_or_default().to_string_lossy().to_string(),
-    }
 }

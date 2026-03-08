@@ -14,6 +14,7 @@ pub use security::*;
 
 use crate::platform::traits::*;
 use crate::platform::types::*;
+use crate::platform::common::{get_memory_info, get_cpu_info, build_system_info};
 use crate::error::AgentResult;
 use crate::error::AgentError;
 use async_trait::async_trait;
@@ -25,6 +26,16 @@ pub struct MacOSPlatform;
 impl MacOSPlatform {
     pub fn new() -> Self {
         Self
+    }
+    
+    fn browser_app_name(browser: BrowserType) -> &'static str {
+        match browser {
+            BrowserType::Chrome => "Google Chrome",
+            BrowserType::Firefox => "Firefox",
+            BrowserType::Safari => "Safari",
+            BrowserType::Edge => "Microsoft Edge",
+            BrowserType::Brave => "Brave Browser",
+        }
     }
 }
 
@@ -43,18 +54,15 @@ impl Platform for MacOSPlatform {
         let memory = get_memory_info().await?;
         let cpu = get_cpu_info().await?;
         
-        Ok(SystemInfo {
+        Ok(build_system_info(
             hostname,
-            os_type: "macOS".to_string(),
-            os_version,
-            arch: std::env::consts::ARCH.to_string(),
             username,
-            uptime_secs: uptime,
-            total_memory_gb: memory.total_gb,
-            available_memory_gb: memory.available_gb,
-            cpu_count: cpu.count,
-            cpu_usage_percent: cpu.usage_percent,
-        })
+            "macOS".to_string(),
+            os_version,
+            uptime,
+            memory,
+            cpu,
+        ))
     }
     
     async fn start_process(
@@ -101,17 +109,7 @@ impl Platform for MacOSPlatform {
     async fn list_processes(&self) -> AgentResult<Vec<ProcessInfo>> {
         list_processes_impl().await
     }
-    
-    async fn find_process(&self, name: &str) -> AgentResult<Option<ProcessInfo>> {
-        let processes = self.list_processes().await?;
-        Ok(processes.into_iter().find(|p| p.name.eq_ignore_ascii_case(name)))
-    }
-    
-    async fn get_process_info(&self, pid: u32) -> AgentResult<Option<ProcessInfo>> {
-        let processes = self.list_processes().await?;
-        Ok(processes.into_iter().find(|p| p.pid == pid))
-    }
-    
+
     async fn get_env_var(&self, name: &str, scope: EnvScope) -> AgentResult<Option<String>> {
         get_env_var_impl(name, scope).await
     }
@@ -160,20 +158,6 @@ impl Platform for MacOSPlatform {
             .args(&["write", &domain, &key, "-bool", action])
             .output()?;
         
-        Ok(())
-    }
-    
-    async fn reboot(&self) -> AgentResult<()> {
-        Command::new("shutdown")
-            .args(&["-r", "now"])
-            .output()?;
-        Ok(())
-    }
-    
-    async fn shutdown(&self) -> AgentResult<()> {
-        Command::new("shutdown")
-            .args(&["-h", "now"])
-            .output()?;
         Ok(())
     }
     
@@ -287,13 +271,7 @@ impl Platform for MacOSPlatform {
     }
     
     async fn launch_browser(&self, browser: BrowserType, url: &str) -> AgentResult<()> {
-        let app_name = match browser {
-            BrowserType::Chrome => "Google Chrome",
-            BrowserType::Firefox => "Firefox",
-            BrowserType::Safari => "Safari",
-            BrowserType::Edge => "Microsoft Edge",
-            BrowserType::Brave => "Brave Browser",
-        };
+        let app_name = Self::browser_app_name(browser);
         
         Command::new("open")
             .args(&["-a", app_name, url])
@@ -303,144 +281,17 @@ impl Platform for MacOSPlatform {
     }
     
     async fn close_browser(&self, browser: BrowserType) -> AgentResult<()> {
-        let app_name = match browser {
-            BrowserType::Chrome => "Google Chrome",
-            BrowserType::Firefox => "Firefox",
-            BrowserType::Safari => "Safari",
-            BrowserType::Edge => "Microsoft Edge",
-            BrowserType::Brave => "Brave Browser",
-        };
+        let app_name = Self::browser_app_name(browser);
         
         Command::new("killall").arg(app_name).output()?;
         Ok(())
     }
-    
-    async fn read_file(&self, path: &str) -> AgentResult<String> {
-        let options = FileReadOptions::default();
-        let result = self.read_file_with_options(path, options).await?;
-        Ok(result.content)
-    }
-    
-    async fn read_file_with_options(&self, path: &str, options: FileReadOptions) -> AgentResult<FileReadResult> {
-        let metadata = std::fs::metadata(path)?;
-        let file_size = metadata.len();
-        
-        let max_size = options.max_size.unwrap_or(DEFAULT_MAX_FILE_SIZE);
-        
-        if file_size > max_size {
-            return Err(AgentError::Io(format!(
-                "File size {} bytes exceeds maximum allowed size {} bytes",
-                file_size, max_size
-            )).into());
-        }
-        
-        let bytes = std::fs::read(path)?;
-        let size_bytes = bytes.len() as u64;
-        
-        let is_text = bytes.iter().take(8000).all(|&b| {
-            b < 128 || b == b'\n' || b == b'\r' || b == b'\t'
-        });
-        
-        if is_text {
-            let content = String::from_utf8_lossy(&bytes).to_string();
-            Ok(FileReadResult {
-                content,
-                is_base64: false,
-                size_bytes,
-                truncated: false,
-            })
-        } else {
-            use base64::Engine;
-            let content = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            Ok(FileReadResult {
-                content,
-                is_base64: true,
-                size_bytes,
-                truncated: false,
-            })
-        }
-    }
-    
-    async fn write_file(&self, path: &str, content: &str) -> AgentResult<()> {
-        let options = FileWriteOptions::default();
-        self.write_file_with_options(path, content, options).await?;
-        Ok(())
-    }
-    
-    async fn write_file_with_options(&self, path: &str, content: &str, options: FileWriteOptions) -> AgentResult<FileWriteResult> {
-        if options.append {
-            use std::io::Write;
-            let mut file = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)?;
-            file.write_all(content.as_bytes())?;
-        } else {
-            std::fs::write(path, content)?;
-        }
-        
-        let bytes_written = content.len() as u64;
-        Ok(FileWriteResult { bytes_written })
-    }
-    
-    async fn delete_file(&self, path: &str) -> AgentResult<()> {
-        std::fs::remove_file(path)?;
-        Ok(())
-    }
-    
-    async fn list_dir(&self, path: &str) -> AgentResult<Vec<FileInfo>> {
-        list_dir_impl(path).await
-    }
-    
-    async fn create_dir(&self, path: &str, recursive: bool) -> AgentResult<()> {
-        if recursive {
-            std::fs::create_dir_all(path)?;
-        } else {
-            std::fs::create_dir(path)?;
-        }
-        Ok(())
-    }
-    
-    async fn copy_file(&self, src: &str, dst: &str) -> AgentResult<()> {
-        std::fs::copy(src, dst)?;
-        Ok(())
-    }
-    
-    async fn move_file(&self, src: &str, dst: &str) -> AgentResult<()> {
-        std::fs::rename(src, dst)?;
-        Ok(())
-    }
-    
-    async fn download_file(&self, url: &str, dest: &str) -> AgentResult<String> {
-        download_file_impl(url, dest).await
-    }
-    
-    fn get_user_dir(&self, dir_type: UserDirType) -> String {
-        get_user_dir_impl(dir_type)
-    }
-    
+
     fn get_program_files_dir(&self) -> String {
         "/Applications".to_string()
     }
     
     fn is_elevated(&self) -> bool {
         is_elevated_impl()
-    }
-    
-    async fn request_elevation(&self) -> AgentResult<bool> {
-        Ok(false)
-    }
-
-    async fn shell_execute(&self, command: &str, timeout_secs: u64) -> AgentResult<serde_json::Value> {
-        let output = std::process::Command::new("sh")
-            .args(&["-c", command])
-            .output()?;
-
-        Ok(serde_json::json!({
-            "stdout": String::from_utf8_lossy(&output.stdout),
-            "stderr": String::from_utf8_lossy(&output.stderr),
-            "exit_code": output.status.code().unwrap_or(-1),
-            "platform": "macos"
-        }))
     }
 }
