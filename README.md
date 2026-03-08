@@ -9,100 +9,47 @@
 1. [项目概述](#项目概述)
 2. [核心原理](#核心原理)
 3. [功能列表](#功能列表)
-4. [安装部署](#安装部署)
-5. [配置说明](#配置说明)
-6. [支持命令](#支持命令)
-7. [通信协议](#通信协议)
-8. [故障排除](#故障排除)
-9. [版本历史](#版本历史)
-10. [相关链接](#相关链接)
+4. [构建部署](#构建部署)
+5. [安装部署](#安装部署)
+6. [配置说明](#配置说明)
+7. [支持命令](#支持命令)
+8. [通信协议](#通信协议)
+9. [故障排除](#故障排除)
 
 ---
 
 ## 项目概述
 
-### 是什么？
-
 claw-agent-client-rs 是一个 Rust 编写的跨平台代理客户端，配合 OpenClaw 网关的 Remote Agent 插件使用，部署在远程设备上以实现远程控制和管理。
 
-### 能做什么？
+### 功能
 
-- 🖥️ **远程执行命令** - 在本设备上执行服务端推送的 Shell 命令
-- 📊 **获取系统信息** - 向服务端提供本设备的主机名、操作系统、CPU、内存等信息
-- 📁 **文件管理** - 列出目录、读写文件等操作
-- 📱 **进程管理** - 列出进程、启动/停止进程
-- 🌐 **浏览器控制** - 打开指定网址
-- 🔧 **软件管理** - 通过 winget（Windows）、brew（macOS）、apt（Linux）安装和卸载软件
-- 🔐 **环境变量管理** - 获取和设置系统/用户环境变量
-- ♻️ **系统操作** - 重启、关机等操作
-
-### 适用场景
-
-- 远程服务器管理
-- 家庭/办公室电脑远程控制
-- 自动化运维任务
-- 跨平台设备统一管理
+- 🖥️ **远程执行命令** - 执行服务端推送的 Shell 命令
+- 📊 **获取系统信息** - 主机名、操作系统、CPU、内存等信息
+- 📁 **文件管理** - 读写文件、复制移动、下载等
+- 📱 **进程管理** - 列出进程、停止进程
+- 🔧 **软件管理** - 搜索、安装、卸载软件
+- ⚙️ **配置管理** - 读取和写入系统配置
+- ♻️ **系统操作** - 重启、关机
 
 ---
 
 ## 核心原理
 
-### 架构图
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      远程设备（客户端）                       │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              Cross-Platform Agent                   │   │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │   │
-│  │  │   Platform  │  │    Auth     │  │   Config    │ │   │
-│  │  │   Layer     │  │   Module    │  │   Loader    │ │   │
-│  │  │ (Win/Mac/Ln)│  │  (Token)    │  │  (YAML)     │ │   │
-│  │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘ │   │
-│  └─────────┼────────────────┼────────────────┼────────┘   │
-└────────────┼────────────────┼────────────────┼──────────────┘
-             │                │                │
-             │ WebSocket      │ Token          │ Config
-             │ Connection     │ Auth           │ Load
-             │                │                │
-┌────────────┴────────────────┴────────────────┴──────────────┐
-│                        OpenClaw 网关                          │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              Remote Agent 插件                        │   │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │   │
-│  │  │ WebSocket   │  │ Unix Socket │  │   Tools     │ │   │
-│  │  │   Server    │  │   Server    │  │  Registry   │ │   │
-│  │  │  (8765端口)  │  │  (实时事件)  │  │  (AI工具)   │ │   │
-│  │  └─────────────┘  └─────────────┘  └─────────────┘ │   │
-│  └─────────────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────────────┘
-```
-
 ### 认证机制
 
 1. **单一 Token**：服务端和客户端使用相同的 Token 进行认证
-2. **自动注册**：客户端连接时只要 Token 校验通过，即可自动注册（不需要在服务端预先配置）
+2. **自动注册**：客户端连接时只要 Token 校验通过，即可自动注册
 3. **唯一在线**：同一 agent_id 只能有一个在线连接
 
 ### 工作流程
 
-1. **获取 Token**：从服务端获取或生成 Token
-2. **配置客户端**：在 `agent.yml` 中配置 Token 和自己的 agent_id
-3. **启动连接**：客户端启动后，通过 WebSocket 连接到服务端 `server_url`
-4. **身份认证**：客户端发送 `agent_id` 和 `token` 进行认证
-5. **保持连接**：认证成功后，客户端保持长连接，等待服务端推送命令
-6. **命令执行**：服务端发送命令，客户端执行后返回结果
-7. **自动重连**：连接断开后，客户端会自动尝试重新连接
-
-### 关键技术点
-
-| 组件 | 技术 | 说明 |
-|------|------|------|
-| WebSocket 客户端 | tokio-tungstenite | 与服务端建立长连接，支持双向通信 |
-| 平台抽象层 | async-trait | 统一接口，支持 Windows/macOS/Linux |
-| 配置加载 | serde_yaml | 读取 YAML 格式配置文件 |
-| 日志系统 | tracing | 结构化日志，支持多级别输出 |
-| 异步运行时 | tokio | 异步 I/O 事件处理 |
+1. 获取 Token（从服务端）
+2. 配置客户端 `agent.yml`
+3. 启动客户端，连接 WebSocket
+4. 身份认证
+5. 保持长连接，等待命令
+6. 执行命令，返回结果
 
 ---
 
@@ -112,397 +59,207 @@ claw-agent-client-rs 是一个 Rust 编写的跨平台代理客户端，配合 O
 
 | 命令 | 说明 | 参数 |
 |------|------|------|
+| `capabilities` | 获取客户端支持的所有命令列表 | 无 |
 | `system.info` | 获取系统信息 | 无 |
-| `shell.execute` | 执行 Shell 命令 | `command`, `timeout` |
+| `system.reboot` | 重启系统 | 无 |
+| `system.shutdown` | 关闭系统 | 无 |
 | `process.list` | 列出进程 | 无 |
+| `process.stop` | 停止进程 | `pid`, `force` |
 | `software.list` | 列出已安装软件 | 无 |
-| `env.list` | 列出环境变量 | `scope`（user/system/session） |
+| `software.search` | 搜索软件 | `query` |
+| `software.install` | 安装软件 | `package`, `silent` |
+| `software.uninstall` | 卸载软件 | `package` |
+| `env.list` | 列出环境变量 | `scope` |
+| `env.get` | 获取环境变量 | `name`, `scope` |
+| `env.set` | 设置环境变量 | `name`, `value`, `scope` |
+| `env.delete` | 删除环境变量 | `name`, `scope` |
 | `file.list` | 列出文件 | `path` |
-| `file.read` | 读取文件内容 | `path`, `max_size`, `encoding` |
-| `file.write` | 写入文件内容 | `path`, `content`, `append`, `encoding` |
+| `file.read` | 读取文件内容 | `path` |
+| `file.write` | 写入文件内容 | `path`, `content` |
+| `file.delete` | 删除文件 | `path` |
+| `file.create_dir` | 创建目录 | `path`, `recursive` |
+| `file.copy` | 复制文件 | `src`, `dst` |
+| `file.move` | 移动文件 | `src`, `dst` |
+| `file.download` | 下载文件 | `url`, `dest` |
+| `config.get` | 获取配置 | `path` |
+| `config.set` | 设置配置 | `path`, `value` |
+| `shell.execute` | 执行 Shell 命令 | `command`, `timeout` |
 
-### 平台特定功能
+---
 
-#### Windows 平台
+## 构建部署
 
-| 功能 | 说明 |
-|------|------|
-| 注册表操作 | 读取/写入 Windows 注册表 |
-| WMI 查询 | 系统信息查询 |
-| 软件管理 | 通过 winget 安装/卸载软件 |
-| 服务管理 | Windows 服务控制 |
+### 方法一：GitHub Release
 
-#### macOS 平台
+从 [GitHub Releases](https://github.com/easy-do/claw-agent-client-rs/releases) 下载预编译的压缩包。
 
-| 功能 | 说明 |
-|------|------|
-| Launchd 管理 | 启动项管理 |
-| AppleScript | 脚本自动化 |
-| Homebrew | 软件包管理 |
+### 方法二：本地构建
 
-#### Linux 平台
+#### Windows
+```powershell
+.\scripts\builds\windows_build.bat
+```
 
-| 功能 | 说明 |
-|------|------|
-| D-Bus 通信 | 系统服务交互 |
-| systemd | 服务管理 |
-| APT/DNF/YUM | 软件包管理 |
+#### macOS
+```bash
+chmod +x scripts/builds/macos_build.sh
+./scripts/builds/macos_build.sh
+```
+
+#### Linux
+```bash
+chmod +x scripts/builds/linux_build.sh
+sudo ./scripts/builds/linux_build.sh
+```
 
 ---
 
 ## 安装部署
 
-### 前置条件
+### 步骤一：获取 Token
 
-- Rust 1.70+ 编译环境
-- 目标平台：Windows 10+、macOS 10.15+、Linux（主流发行版）
-- 可访问 OpenClaw 服务器的 8765 端口
+从服务端 Remote Agent 插件生成 Token。
 
-### 步骤一：克隆仓库
-
-```bash
-git clone https://github.com/easy-do/claw-agent-client-rs.git
-cd claw-agent-client-rs
-```
-
-### 步骤二：编译项目
-
-```bash
-# 开发模式编译
-cargo build
-
-# 生产模式编译（推荐）
-cargo build --release
-```
-
-编译产物位于 `target/release/claw-agent-client-rs`（Linux/macOS）或 `target/release/claw-agent-client-rs.exe`（Windows）。
-
-### 步骤三：获取 Token
-
-首先需要在服务端安装 Remote Agent 插件，然后使用工具生成 Token：
-
-```
-调用: remote_agent.generate_token
-参数: {}
-
-返回:
-{
-  "token": "agent-abc123def456...",
-  "note": "请在 openclaw.json 插件配置中添加: token: \"agent-abc123def456...\"",
-  "server_url": "ws://<openclaw服务器地址>:8765/agent/ws",
-  "client_config": "在客户端 agent.yml 中配置: auth.token: \"agent-abc123def456...\""
-}
-```
-
-### 步骤四：配置文件
-
+### 步骤二：配置
 
 编辑 `config/agent.yml`：
-
 ```yaml
-# 设备 ID（自定义，用于标识这台设备）
-agent_id: "台式机"
-
-# OpenClaw 服务器 WebSocket 地址
+agent_id: "设备名称"
 server_url: "ws://your-server.com:8765"
-
-# 认证配置（Token 必须与服务端配置一致）
 auth:
-  token: "agent-your-token-here"
-
-# 可选：功能开关 (未实现)
-capabilities:
-  system_info: true
-  process_control: true
-  env_management: true
-  software_install: true
-  file_operations: true
+  token: "your-token"
 ```
 
-### 步骤五：运行客户端
+### 步骤三：安装服务
 
+#### Windows
+```powershell
+.\compose\windows_install.bat install
+```
+
+#### macOS / Linux
 ```bash
-# 开发模式运行
-cargo run
-
-# 生产模式运行
-./target/release/claw-agent-client-rs
-```
-
-### 步骤六：验证连接
-
-客户端成功连接后，服务端日志会显示设备上线信息：
-
-```
-[Remote Agent] Agent connected: 台式机, session: xxx
+chmod +x compose/*_install.sh
+sudo ./compose/*_install.sh install
 ```
 
 ---
 
 ## 配置说明
 
-### 配置文件结构
+### 配置文件
 
 ```yaml
-# ==========================================
-# 必填配置项
-# ==========================================
-
-# 设备唯一标识符（自定义，用于标识这台设备）
-agent_id: "台式机"
-
-# OpenClaw 服务器地址（WebSocket）
+agent_id: "设备名称"
 server_url: "ws://服务器地址:8765"
-
-# 认证令牌（必须与服务端配置一致）
 auth:
-  token: "agent-your-token-here"
+  token: "your-token"
 
-# ==========================================
-# 可选配置项
-# ==========================================
-
-# 代理能力配置（默认全部开启 未实现）
 capabilities:
-  system_info: true        # 系统信息查询
-  process_control: true    # 进程控制
-  env_management: true    # 环境变量管理
-  software_install: true   # 软件安装卸载
-  file_operations: true   # 文件操作
-
+  shell.execute:
+    enabled: true
+    name: "Execute Shell Command"
+    description: "执行Shell命令"
+    category: "shell"
 ```
-
-### 环境变量
-
-| 变量名 | 说明 | 默认值 |
-|--------|------|--------|
-| `AGENT_CONFIG` | 配置文件路径 | `config/agent.yml` |
-| `AGENT_LOG_LEVEL` | 日志级别 | `info` |
-| `AGENT_SECRET_KEY` | 密钥（预留） | - |
 
 ---
 
 ## 支持命令
 
-### system.info
-
-获取本机系统信息：
-
+### capabilities
 ```json
-{
-  "action": "system.info",
-  "params": {}
-}
+{ "action": "capabilities", "params": {} }
 ```
 
-返回：
-
+### system.info
 ```json
-{
-  "hostname": "DESKTOP-PC",
-  "os_type": "Windows",
-  "os_version": "10.0.19045",
-  "arch": "x64",
-  "username": "admin",
-  "uptime_secs": 86400,
-  "total_memory_gb": 16.0,
-  "available_memory_gb": 8.5,
-  "cpu_count": 8,
-  "cpu_usage_percent": 15.5
-}
+{ "action": "system.info", "params": {} }
 ```
 
 ### shell.execute
-
-执行 Shell 命令：
-
 ```json
-{
-  "action": "shell.execute",
-  "params": {
-    "command": "dir C:\\",
-    "timeout": 30
-  }
-}
-```
-
-返回：
-
-```json
-{
-  "stdout": " 驱动器 C 中的卷没有标签。\n...",
-  "stderr": "",
-  "exit_code": 0,
-  "platform": "windows"
-}
+{ "action": "shell.execute", "params": { "command": "dir", "timeout": 30 } }
 ```
 
 ### process.list
-
-列出正在运行的进程：
-
 ```json
-{
-  "action": "process.list",
-  "params": {}
-}
+{ "action": "process.list", "params": {} }
 ```
 
-返回：
-
+### process.stop
 ```json
-[
-  {
-    "pid": 0,
-    "name": "System Idle Process",
-    "cmd": "",
-    "cpu_percent": 0.0,
-    "memory_mb": 0,
-    "status": "Running"
-  }
-]
+{ "action": "process.stop", "params": { "pid": 1234, "force": false } }
 ```
 
 ### software.list
-
-列出已安装软件：
-
 ```json
-{
-  "action": "software.list",
-  "params": {}
-}
+{ "action": "software.list", "params": {} }
 ```
 
-返回：
-
+### software.search
 ```json
-[
-  {
-    "name": "Google Chrome",
-    "version": "120.0.6099.130",
-    "publisher": "Google LLC",
-    "install_path": "C:\\Program Files\\Google\\Chrome\\Application"
-  }
-]
+{ "action": "software.search", "params": { "query": "chrome" } }
+```
+
+### software.install
+```json
+{ "action": "software.install", "params": { "package": "Google Chrome", "silent": true } }
+```
+
+### software.uninstall
+```json
+{ "action": "software.uninstall", "params": { "package": "Google Chrome" } }
 ```
 
 ### env.list
-
-列出环境变量：
-
 ```json
-{
-  "action": "env.list",
-  "params": {
-    "scope": "user"
-  }
-}
+{ "action": "env.list", "params": { "scope": "user" } }
 ```
 
-返回：
-
+### env.get
 ```json
-[
-  {
-    "name": "PATH",
-    "value": "C:\\Windows\\system32;..."
-  }
-]
+{ "action": "env.get", "params": { "name": "PATH", "scope": "user" } }
+```
+
+### env.set
+```json
+{ "action": "env.set", "params": { "name": "TEST", "value": "123", "scope": "user" } }
+```
+
+### env.delete
+```json
+{ "action": "env.delete", "params": { "name": "TEST", "scope": "user" } }
 ```
 
 ### file.list
-
-列出目录内容：
-
 ```json
-{
-  "action": "file.list",
-  "params": {
-    "path": "C:\\Users"
-  }
-}
-```
-
-返回：
-
-```json
-[
-  {
-    "name": "Admin",
-    "path": "C:\\Users\\Admin",
-    "is_dir": true,
-    "size_bytes": 0,
-    "modified": 1704067200
-  }
-]
+{ "action": "file.list", "params": { "path": "C:\\Users" } }
 ```
 
 ### file.read
-
-读取文件内容（文本或二进制转Base64）：
-
 ```json
-{
-  "action": "file.read",
-  "params": {
-    "path": "C:\\test\\file.txt",
-    "max_size": 10485760,
-    "encoding": "utf-8"
-  }
-}
+{ "action": "file.read", "params": { "path": "C:\\test\\file.txt" } }
 ```
-
-参数说明：
-- `path`：文件路径（必填）
-- `max_size`：最大读取字节数，默认 10485760（10MB），超过则返回错误
-- `encoding`：字符编码（可选，默认 utf-8）
-
-返回：
-
-```json
-{
-  "content": "文件内容...",
-  "is_base64": false,
-  "size_bytes": 1024,
-  "truncated": false
-}
-```
-
-返回字段说明：
-- `content`：文件内容（文本直接返回，二进制返回Base64编码）
-- `is_base64`：是否为Base64编码（二进制文件为true）
-- `size_bytes`：文件大小（字节）
-- `truncated`：是否被截断
 
 ### file.write
-
-写入文件内容：
-
 ```json
-{
-  "action": "file.write",
-  "params": {
-    "path": "C:\\test\\output.txt",
-    "content": "要写入的内容",
-    "append": false,
-    "encoding": "utf-8"
-  }
-}
+{ "action": "file.write", "params": { "path": "C:\\test\\file.txt", "content": "hello" } }
 ```
 
-参数说明：
-- `path`：文件路径（必填）
-- `content`：写入内容（必填）
-- `append`：是否追加模式，默认 false（覆盖写入）
-- `encoding`：字符编码（可选，默认 utf-8）
-
-返回：
-
+### config.get
 ```json
-{
-  "bytes_written": 1024
-}
+{ "action": "config.get", "params": { "path": "HKEY_CURRENT_USER\\Software\\Microsoft" } }
+```
+
+### config.set
+```json
+{ "action": "config.set", "params": { "path": "HKEY_CURRENT_USER\\Test", "value": "123" } }
+```
+
+### system.reboot
+```json
+{ "action": "system.reboot", "params": {} }
 ```
 
 ---
@@ -510,189 +267,36 @@ capabilities:
 ## 通信协议
 
 ### WebSocket 连接
-
-客户端连接到服务端 URL：`{server_url}/agent/ws`
+`{server_url}/agent/ws`
 
 ### 消息格式
 
-#### 1. 服务端欢迎消息
-
-服务端 → 客户端：
-
+#### 认证
 ```json
-{
-  "type": "welcome",
-  "version": "0.1.0",
-  "platform": "openclaw-remote-agent"
-}
+{ "type": "auth", "agent_id": "设备名", "token": "token" }
 ```
 
-#### 2. 客户端认证
-
-客户端 → 服务端：
-
+#### 命令推送
 ```json
-{
-  "type": "auth",
-  "agent_id": "台式机",
-  "token": "agent-your-token"
-}
+{ "command_id": "cmd-1", "action": "shell.execute", "params": { "command": "whoami" } }
 ```
 
-服务端 → 客户端：
-
+#### 命令响应
 ```json
-{
-  "type": "auth_response",
-  "success": true,
-  "session_id": "uuid",
-  "message": "认证成功"
-}
+{ "type": "command_response", "command_id": "cmd-1", "success": true, "data": {...} }
 ```
-
-如果认证失败：
-
-```json
-{
-  "type": "auth_response",
-  "success": false,
-  "message": "Invalid token"
-}
-```
-
-如果客户端已在线：
-
-```json
-{
-  "type": "auth_response",
-  "success": false,
-  "message": "Agent is already connected. Only one client per agent is allowed."
-}
-```
-
-#### 3. 命令推送
-
-服务端 → 客户端：
-
-```json
-{
-  "command_id": "cmd-1234567890-1",
-  "action": "shell.execute",
-  "params": {
-    "command": "whoami",
-    "timeout": 30000
-  }
-}
-```
-
-#### 4. 命令响应
-
-客户端 → 服务端：
-
-```json
-{
-  "type": "command_response",
-  "command_id": "cmd-1234567890-1",
-  "success": true,
-  "data": {
-    "stdout": "admin\n",
-    "stderr": "",
-    "exit_code": 0
-  }
-}
-```
-
-#### 5. 心跳（Ping/Pong）
-
-服务端 → 客户端：WebSocket 原生 Ping 帧
-
-客户端 → 服务端：WebSocket 原生 Pong 帧
 
 ---
 
 ## 故障排除
 
-### 常见问题
+### 连接失败
+- 检查网络连通性
+- 确认服务器地址和端口正确
 
-#### 1. 连接失败
+### 认证失败
+- 确认 Token 与服务端配置一致
 
-**症状**：客户端日志显示连接失败
-
-**排查步骤**：
-
-```bash
-# 检查网络连通性
-ping your-server.com
-
-# 检查端口是否开放
-telnet your-server.com 8765
-
-# 查看客户端日志
-tail -f log/cmd.log
-```
-
-**可能原因**：
-
-- 服务器地址错误
-- 服务器未运行
-- 防火墙阻止连接
-- 网络不可达
-
-#### 2. 认证失败
-
-**症状**：服务端返回 "Invalid token"
-
-**排查步骤**：
-
-1. 确认客户端 `token` 与服务端配置完全一致
-2. 检查配置文件中是否有多余空格或换行
-
-#### 3. 客户端已在线被拒绝
-
-**症状**：服务端返回 "Agent is already connected. Only one client per agent is allowed."
-
-**说明**：这是正常行为，同一 agent_id 只能有一个在线连接
-
-**解决**：
-1. 确认没有其他客户端使用相同 agent_id
-2. 如果是之前连接断开后重连失败，请等待几秒后再试
-
-#### 4. 命令执行超时
-
-**症状**：发送命令后长时间无响应
-
-**排查步骤**：
-
-```bash
-# 查看客户端日志
-tail -f log/cmd.log
-
-# 检查命令是否正确送达
-# 日志中应有 "Received command" 信息
-```
-
-**可能原因**：
-
-- 客户端处理命令耗时过长
-- 网络延迟过高
-- 命令阻塞
-
-#### 5. 权限不足
-
-**症状**：部分操作返回权限错误
-
-**排查步骤**：
-
-```bash
-# Windows：以管理员身份运行客户端
-# macOS：确保有 Full Disk Access 权限
-# Linux：检查是否需要 sudo
-```
-
----
-
-## 相关链接
-
-- **服务端插件仓库**：https://gitee.com/yuzhanfeng/claw-remote-agent-plugin.git
-- **服务端插件仓库**：https://github.com/easy-do/claw-remote-agent-plugin.git
-- **OpenClaw 文档**：https://docs.openclaw.ai
+### 权限不足
+- Windows：以管理员身份运行
+- Linux/macOS：使用 sudo
