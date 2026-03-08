@@ -16,7 +16,3 @@ pub async fn get_uptime() -> AgentResult<u64> {
     let secs: u64 = String::from_utf8_lossy(&output.stdout).trim().parse().unwrap_or(0);
     Ok(secs)
 }
-
-pub async fn get_hostname() -> AgentResult<String> {
-    Ok(whoami::hostname())
-}

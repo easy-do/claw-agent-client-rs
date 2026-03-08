@@ -6,7 +6,8 @@ use crate::platform::common::{
     read_file_with_options_impl, read_file_impl,
     write_file_with_options_impl, write_file_impl,
     delete_file_impl, create_dir_impl, copy_file_impl, move_file_impl,
-    list_dir_impl, download_file_impl, get_user_dir_impl
+    list_dir_impl, download_file_impl, get_user_dir_impl,
+    get_hostname, get_username
 };
 use crate::platform::types::*;
 
@@ -21,11 +22,11 @@ pub trait Platform: Send + Sync {
     async fn get_system_info(&self) -> AgentResult<SystemInfo>;
     
     async fn get_hostname(&self) -> AgentResult<String> {
-        Ok(whoami::hostname())
+        get_hostname()
     }
     
     async fn get_username(&self) -> AgentResult<String> {
-        Ok(whoami::username())
+        get_username()
     }
     
     async fn start_process(

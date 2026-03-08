@@ -1,6 +1,7 @@
 use crate::platform::types::CpuInfo;
 use crate::error::AgentResult;
 use crate::platform::types::MemoryInfo;
+use crate::platform::common::get_hostname;
 
 pub async fn get_os_version() -> AgentResult<String> {
     let output = std::process::Command::new("sw_vers")
@@ -26,8 +27,4 @@ pub async fn get_uptime() -> AgentResult<u64> {
         .as_secs();
     
     Ok(now - boot_time)
-}
-
-pub async fn get_hostname() -> AgentResult<String> {
-    Ok(whoami::hostname())
 }

@@ -1,4 +1,5 @@
 use crate::error::AgentResult;
+use crate::platform::common::get_hostname;
 
 pub async fn get_os_version() -> AgentResult<String> {
     let output = std::process::Command::new("cat")
@@ -29,8 +30,4 @@ pub async fn get_uptime() -> AgentResult<u64> {
     }
     
     Ok(0)
-}
-
-pub async fn get_hostname() -> AgentResult<String> {
-    Ok(whoami::hostname())
 }

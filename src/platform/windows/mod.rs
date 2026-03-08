@@ -12,7 +12,7 @@ pub use security::*;
 
 use crate::platform::traits::*;
 use crate::platform::types::*;
-use crate::platform::common::{get_memory_info, get_cpu_info, build_system_info};
+use crate::platform::common::{get_memory_info, get_cpu_info, build_system_info, get_hostname, get_username};
 use crate::error::AgentResult;
 use async_trait::async_trait;
 use std::process::Command;
@@ -34,8 +34,8 @@ impl Platform for WindowsPlatform {
     }
     
     async fn get_system_info(&self) -> AgentResult<SystemInfo> {
-        let hostname = whoami::hostname();
-        let username = whoami::username();
+        let hostname = get_hostname()?;
+        let username = get_username()?;
         
         let os_version = get_os_version().await?;
         let uptime = get_uptime().await?;

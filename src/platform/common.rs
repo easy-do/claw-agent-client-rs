@@ -4,6 +4,14 @@ use crate::ProcessInfo;
 use sysinfo::System;
 use std::io::Write;
 
+pub fn get_hostname() -> AgentResult<String> {
+    Ok(whoami::hostname())
+}
+
+pub fn get_username() -> AgentResult<String> {
+    Ok(whoami::username())
+}
+
 pub fn build_system_info(
     hostname: String,
     username: String,
