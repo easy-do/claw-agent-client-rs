@@ -17,14 +17,22 @@ jobs:
       - name: Build
         run: |
           cargo build --release --bin claw-agent-client-rs
-      - name: Rename binary
+      - name: Prepare distribution
         run: |
-          mv target/release/claw-agent-client-rs.exe target/release/claw-agent-client-rs-windows.exe
+          New-Item -ItemType Directory -Path release -Force
+          Copy-Item target/release/claw-agent-client-rs.exe release/
+          New-Item -ItemType Directory -Path release/config -Force
+          Copy-Item config/agent.yml release/config/
+          New-Item -ItemType Directory -Path release/scripts -Force
+          Copy-Item scripts/* release/scripts/
+      - name: Create zip
+        run: |
+          Compress-Archive -Path release/* -DestinationPath claw-agent-client-rs-windows.zip
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: target/release/claw-agent-client-rs-windows.exe
+          path: claw-agent-client-rs-windows.zip
 
   build-macos:
     runs-on: macos-latest
@@ -33,14 +41,22 @@ jobs:
       - name: Build
         run: |
           cargo build --release --bin claw-agent-client-rs
-      - name: Rename binary
+      - name: Prepare distribution
         run: |
-          mv target/release/claw-agent-client-rs target/release/claw-agent-client-rs-macos
+          mkdir -p release
+          cp target/release/claw-agent-client-rs release/
+          mkdir -p release/config
+          cp config/agent.yml release/config/
+          mkdir -p release/scripts
+          cp scripts/* release/scripts/
+      - name: Create zip
+        run: |
+          zip -r claw-agent-client-rs-macos.zip release/
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: target/release/claw-agent-client-rs-macos
+          path: claw-agent-client-rs-macos.zip
 
   build-linux:
     runs-on: ubuntu-latest
@@ -53,14 +69,22 @@ jobs:
       - name: Build
         run: |
           cargo build --release --bin claw-agent-client-rs
-      - name: Rename binary
+      - name: Prepare distribution
         run: |
-          mv target/release/claw-agent-client-rs target/release/claw-agent-client-rs-linux
+          mkdir -p release
+          cp target/release/claw-agent-client-rs release/
+          mkdir -p release/config
+          cp config/agent.yml release/config/
+          mkdir -p release/scripts
+          cp scripts/* release/scripts/
+      - name: Create zip
+        run: |
+          zip -r claw-agent-client-rs-linux.zip release/
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: target/release/claw-agent-client-rs-linux
+          path: claw-agent-client-rs-linux.zip
 
   release:
     needs: [build-windows, build-macos, build-linux]
@@ -73,12 +97,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: ./release-assets
-          merge-multiple: true   # 将所有 artifact 合并到同一目录
+          merge-multiple: true
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: ./release-assets/*   # 上传该目录下所有文件
+          files: ./release-assets/*
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -13,14 +13,317 @@ auth:
   token: "agent-desktop-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
 
 # 代理能力配置
+# 每个命令都可以设置 enabled: true/false 来控制开关
+# 同时可以自定义 name, description, category, parameters
+# 如果不指定某个字段，将使用默认值
+# capabilities 命令始终可用，不受此配置影响
 capabilities:
-  # 系统信息查询
-  system_info: true
-  # 进程控制
-  process_control: true
-  # 环境变量管理
-  env_management: true
-  # 软件安装卸载
-  software_install: true
-  # 文件操作
-  file_operations: true
+  # ========== 系统命令 ==========
+  capabilities:
+    enabled: true
+    name: "Get Capabilities"
+    description: "获取客户端支持的所有命令列表"
+    category: "system"
+    parameters: []
+
+  system.info:
+    enabled: true
+    name: "Get System Info"
+    description: "获取系统信息，包括主机名、操作系统版本、架构、用户名、运行时间、内存和CPU信息"
+    category: "system"
+    parameters: []
+
+  system.reboot:
+    enabled: true
+    name: "Reboot System"
+    description: "重启系统"
+    category: "system"
+    parameters: []
+
+  system.shutdown:
+    enabled: true
+    name: "Shutdown System"
+    description: "关闭系统"
+    category: "system"
+    parameters: []
+
+  # ========== 进程命令 ==========
+  process.list:
+    enabled: true
+    name: "List Processes"
+    description: "获取当前运行的进程列表"
+    category: "process"
+    parameters: []
+
+  process.stop:
+    enabled: true
+    name: "Stop Process"
+    description: "停止指定PID的进程"
+    category: "process"
+    parameters:
+      - name: pid
+        type: number
+        required: true
+        description: "进程ID"
+      - name: force
+        type: boolean
+        required: false
+        description: "是否强制终止"
+
+  # ========== 软件命令 ==========
+  software.list:
+    enabled: true
+    name: "List Software"
+    description: "获取已安装的软件列表"
+    category: "software"
+    parameters: []
+
+  software.search:
+    enabled: true
+    name: "Search Software"
+    description: "搜索可安装的软件包"
+    category: "software"
+    parameters:
+      - name: query
+        type: string
+        required: true
+        description: "搜索关键词"
+
+  software.install:
+    enabled: true
+    name: "Install Software"
+    description: "安装指定的软件包"
+    category: "software"
+    parameters:
+      - name: package
+        type: string
+        required: true
+        description: "软件包名称或ID"
+      - name: silent
+        type: boolean
+        required: false
+        description: "是否静默安装"
+
+  software.uninstall:
+    enabled: true
+    name: "Uninstall Software"
+    description: "卸载指定的软件包"
+    category: "software"
+    parameters:
+      - name: package
+        type: string
+        required: true
+        description: "软件包名称或ID"
+
+  # ========== 环境变量命令 ==========
+  env.list:
+    enabled: true
+    name: "List Environment Variables"
+    description: "获取环境变量列表"
+    category: "environment"
+    parameters:
+      - name: scope
+        type: string
+        required: false
+        description: "作用域: user, system, session"
+
+  env.get:
+    enabled: true
+    name: "Get Environment Variable"
+    description: "获取指定环境变量的值"
+    category: "environment"
+    parameters:
+      - name: name
+        type: string
+        required: true
+        description: "变量名"
+      - name: scope
+        type: string
+        required: false
+        description: "作用域: user, system, session"
+
+  env.set:
+    enabled: true
+    name: "Set Environment Variable"
+    description: "设置环境变量"
+    category: "environment"
+    parameters:
+      - name: name
+        type: string
+        required: true
+        description: "变量名"
+      - name: value
+        type: string
+        required: true
+        description: "变量值"
+      - name: scope
+        type: string
+        required: false
+        description: "作用域: user, system, session"
+
+  env.delete:
+    enabled: true
+    name: "Delete Environment Variable"
+    description: "删除指定的环境变量"
+    category: "environment"
+    parameters:
+      - name: name
+        type: string
+        required: true
+        description: "变量名"
+      - name: scope
+        type: string
+        required: false
+        description: "作用域: user, system, session"
+
+  # ========== 文件命令 ==========
+  file.list:
+    enabled: true
+    name: "List Directory"
+    description: "列出指定目录的内容"
+    category: "file"
+    parameters:
+      - name: path
+        type: string
+        required: false
+        description: "目录路径"
+
+  file.read:
+    enabled: true
+    name: "Read File"
+    description: "读取文件内容"
+    category: "file"
+    parameters:
+      - name: path
+        type: string
+        required: true
+        description: "文件路径"
+
+  file.write:
+    enabled: true
+    name: "Write File"
+    description: "写入内容到文件"
+    category: "file"
+    parameters:
+      - name: path
+        type: string
+        required: true
+        description: "文件路径"
+      - name: content
+        type: string
+        required: true
+        description: "文件内容"
+
+  file.delete:
+    enabled: true
+    name: "Delete File"
+    description: "删除指定的文件或目录"
+    category: "file"
+    parameters:
+      - name: path
+        type: string
+        required: true
+        description: "文件或目录路径"
+
+  file.create_dir:
+    enabled: true
+    name: "Create Directory"
+    description: "创建目录"
+    category: "file"
+    parameters:
+      - name: path
+        type: string
+        required: true
+        description: "目录路径"
+      - name: recursive
+        type: boolean
+        required: false
+        description: "是否递归创建"
+
+  file.copy:
+    enabled: true
+    name: "Copy File"
+    description: "复制文件或目录"
+    category: "file"
+    parameters:
+      - name: src
+        type: string
+        required: true
+        description: "源路径"
+      - name: dst
+        type: string
+        required: true
+        description: "目标路径"
+
+  file.move:
+    enabled: true
+    name: "Move File"
+    description: "移动文件或目录"
+    category: "file"
+    parameters:
+      - name: src
+        type: string
+        required: true
+        description: "源路径"
+      - name: dst
+        type: string
+        required: true
+        description: "目标路径"
+
+  file.download:
+    enabled: true
+    name: "Download File"
+    description: "从URL下载文件"
+    category: "file"
+    parameters:
+      - name: url
+        type: string
+        required: true
+        description: "下载链接"
+      - name: dest
+        type: string
+        required: true
+        description: "目标保存路径"
+
+  # ========== 配置命令 ==========
+  config.get:
+    enabled: true
+    name: "Get Config"
+    description: "获取配置值"
+    category: "config"
+    parameters:
+      - name: path
+        type: string
+        required: true
+        description: "配置路径"
+
+  config.set:
+    enabled: true
+    name: "Set Config"
+    description: "设置配置值"
+    category: "config"
+    parameters:
+      - name: path
+        type: string
+        required: true
+        description: "配置路径"
+      - name: value
+        type: any
+        required: true
+        description: "配置值"
+
+  # ========== Shell 命令 ==========
+  shell.execute:
+    enabled: true
+    name: "Execute Shell Command"
+    description: "执行Shell命令并返回输出"
+    category: "shell"
+    parameters:
+      - name: command
+        type: string
+        required: true
+        description: "要执行的命令"
+      - name: timeout
+        type: number
+        required: false
+        description: "超时时间（秒）"

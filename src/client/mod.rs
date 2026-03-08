@@ -2,7 +2,7 @@ pub mod command;
 
 pub mod ws;
 
-pub use command::Command;
+pub use command::CommandContext;
 
 use std::sync::Arc;
 use std::time::Duration;

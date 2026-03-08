@@ -18,10 +18,34 @@ pub fn load_config() -> Result<AgentConfig, anyhow::Error> {
     tracing::info!("Loading config from: {:?}", config_path);
     
     if config_path.exists() {
-        AgentConfig::load_from_file(&config_path)
+        let config = AgentConfig::load_from_file(&config_path)?;
+        if let Some(parent) = config_path.parent() {
+            let example_path = parent.join("agent.example.yml");
+            if !example_path.exists() {
+                tracing::info!("Generating example config file: {:?}", example_path);
+                let example_config = AgentConfig::default();
+                example_config.save_to_file(&example_path)?;
+            }
+        }
+        Ok(config)
     } else {
-        tracing::warn!("Config file not found, using defaults");
-        Ok(AgentConfig::default())
+        tracing::warn!("Config file not found, generating default config");
+        
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        
+        let default_config = AgentConfig::default();
+        default_config.save_to_file(&config_path)?;
+        
+        let example_path = config_path.parent()
+            .map(|p| p.join("agent.example.yml"))
+            .unwrap_or_else(|| std::path::PathBuf::from("agent.example.yml"));
+        
+        tracing::info!("Generating example config file: {:?}", example_path);
+        default_config.save_to_file(&example_path)?;
+        
+        Ok(default_config)
     }
 }
 

@@ -1,89 +1,63 @@
+use crate::config::{AgentConfig, Capabilities};
 use crate::platform::types::*;
+use std::sync::Arc;
 
-pub enum Command {
-    SystemInfo,
-    ProcessList,
-    SoftwareList,
-    EnvList,
-    FileList,
-    ShellExecute,
-    SearchSoftware,
-    InstallSoftware,
-    UninstallSoftware,
-    GetEnvVar,
-    SetEnvVar,
-    DeleteEnvVar,
-    ReadFile,
-    WriteFile,
-    DeleteFile,
-    CreateDir,
-    CopyFile,
-    MoveFile,
-    DownloadFile,
-    GetConfig,
-    SetConfig,
-    Reboot,
-    Shutdown,
-    StopProcess,
+pub struct CommandContext {
+    pub config: Arc<AgentConfig>,
 }
 
-impl Command {
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "system.info" => Some(Command::SystemInfo),
-            "process.list" => Some(Command::ProcessList),
-            "software.list" => Some(Command::SoftwareList),
-            "env.list" => Some(Command::EnvList),
-            "file.list" => Some(Command::FileList),
-            "shell.execute" => Some(Command::ShellExecute),
-            "software.search" => Some(Command::SearchSoftware),
-            "software.install" => Some(Command::InstallSoftware),
-            "software.uninstall" => Some(Command::UninstallSoftware),
-            "env.get" => Some(Command::GetEnvVar),
-            "env.set" => Some(Command::SetEnvVar),
-            "env.delete" => Some(Command::DeleteEnvVar),
-            "file.read" => Some(Command::ReadFile),
-            "file.write" => Some(Command::WriteFile),
-            "file.delete" => Some(Command::DeleteFile),
-            "file.create_dir" => Some(Command::CreateDir),
-            "file.copy" => Some(Command::CopyFile),
-            "file.move" => Some(Command::MoveFile),
-            "file.download" => Some(Command::DownloadFile),
-            "config.get" => Some(Command::GetConfig),
-            "config.set" => Some(Command::SetConfig),
-            "system.reboot" => Some(Command::Reboot),
-            "system.shutdown" => Some(Command::Shutdown),
-            "process.stop" => Some(Command::StopProcess),
-            _ => None,
-        }
+impl CommandContext {
+    pub fn new(config: Arc<AgentConfig>) -> Self {
+        Self { config }
     }
 
-    pub async fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
-        match self {
-            Command::SystemInfo => execute_system_info().await,
-            Command::ProcessList => execute_process_list().await,
-            Command::SoftwareList => execute_software_list().await,
-            Command::EnvList => execute_env_list(params).await,
-            Command::FileList => execute_file_list(params).await,
-            Command::ShellExecute => execute_shell(params).await,
-            Command::SearchSoftware => execute_search_software(params).await,
-            Command::InstallSoftware => execute_install_software(params).await,
-            Command::UninstallSoftware => execute_uninstall_software(params).await,
-            Command::GetEnvVar => execute_get_env_var(params).await,
-            Command::SetEnvVar => execute_set_env_var(params).await,
-            Command::DeleteEnvVar => execute_delete_env_var(params).await,
-            Command::ReadFile => execute_read_file(params).await,
-            Command::WriteFile => execute_write_file(params).await,
-            Command::DeleteFile => execute_delete_file(params).await,
-            Command::CreateDir => execute_create_dir(params).await,
-            Command::CopyFile => execute_copy_file(params).await,
-            Command::MoveFile => execute_move_file(params).await,
-            Command::DownloadFile => execute_download_file(params).await,
-            Command::GetConfig => execute_get_config(params).await,
-            Command::SetConfig => execute_set_config(params).await,
-            Command::Reboot => execute_reboot().await,
-            Command::Shutdown => execute_shutdown().await,
-            Command::StopProcess => execute_stop_process(params).await,
+    pub fn get_capabilities(&self) -> &Capabilities {
+        &self.config.capabilities
+    }
+
+    pub fn is_command_enabled(&self, command_id: &str) -> bool {
+        self.config.capabilities.is_enabled(command_id)
+    }
+
+    pub fn execute_capabilities(&self) -> serde_json::Value {
+        self.config.capabilities.to_capabilities_list()
+    }
+
+    pub async fn execute(&self, command: &str, params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+        if !self.is_command_enabled(command) {
+            return Err(anyhow::anyhow!(
+                "Command '{}' is disabled in configuration",
+                command
+            ));
+        }
+
+        match command {
+            "capabilities" => Ok(self.execute_capabilities()),
+            "system.info" => execute_system_info().await,
+            "process.list" => execute_process_list().await,
+            "software.list" => execute_software_list().await,
+            "env.list" => execute_env_list(params).await,
+            "file.list" => execute_file_list(params).await,
+            "shell.execute" => execute_shell(params).await,
+            "software.search" => execute_search_software(params).await,
+            "software.install" => execute_install_software(params).await,
+            "software.uninstall" => execute_uninstall_software(params).await,
+            "env.get" => execute_get_env_var(params).await,
+            "env.set" => execute_set_env_var(params).await,
+            "env.delete" => execute_delete_env_var(params).await,
+            "file.read" => execute_read_file(params).await,
+            "file.write" => execute_write_file(params).await,
+            "file.delete" => execute_delete_file(params).await,
+            "file.create_dir" => execute_create_dir(params).await,
+            "file.copy" => execute_copy_file(params).await,
+            "file.move" => execute_move_file(params).await,
+            "file.download" => execute_download_file(params).await,
+            "config.get" => execute_get_config(params).await,
+            "config.set" => execute_set_config(params).await,
+            "system.reboot" => execute_reboot().await,
+            "system.shutdown" => execute_shutdown().await,
+            "process.stop" => execute_stop_process(params).await,
+            _ => Err(anyhow::anyhow!("Unknown command: {}", command)),
         }
     }
 }

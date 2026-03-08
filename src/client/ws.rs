@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use crate::config::AgentConfig;
-use crate::client::Command;
+use crate::client::CommandContext;
 
 fn log_command_to_file(action: &str, params: &serde_json::Value) {
     let log_path = std::path::Path::new("log/cmd.log");
@@ -125,6 +125,8 @@ pub async fn connect(url: &str, config: Arc<AgentConfig>) -> Result<(), anyhow::
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<OutgoingMessage>(100);
     let write_arc = Arc::new(Mutex::new(write));
     
+    let cmd_ctx = CommandContext::new(config.clone());
+    
     let write_for_sender = write_arc.clone();
     tokio::spawn(async move {
         while let Some(msg) = cmd_rx.recv().await {
@@ -132,7 +134,7 @@ pub async fn connect(url: &str, config: Arc<AgentConfig>) -> Result<(), anyhow::
             
             match msg {
                 OutgoingMessage::Command(cmd) => {
-                    let result = execute_command(cmd.action.as_str(), cmd.params).await;
+                    let result = execute_command(&cmd_ctx, cmd.action.as_str(), cmd.params).await;
                     
                     let response = match result {
                         Ok(data) => CommandResponse {
@@ -200,9 +202,6 @@ pub async fn connect(url: &str, config: Arc<AgentConfig>) -> Result<(), anyhow::
     Err(anyhow::anyhow!("Connection lost"))
 }
 
-async fn execute_command(action: &str, params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
-    let command = Command::from_str(action)
-        .ok_or_else(|| anyhow::anyhow!("Unknown action: {}", action))?;
-    
-    command.execute(params).await
+async fn execute_command(ctx: &CommandContext, action: &str, params: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    ctx.execute(action, params).await
 }
