@@ -23,6 +23,7 @@ jobs:
           Copy-Item target/release/claw-agent-client-rs.exe release/
           New-Item -ItemType Directory -Path release/config -Force
           Copy-Item config/agent.yml release/config/
+          Copy-Item config/metadata.json release/config/
           Copy-Item scripts/installs/windows_install.bat release/
       - name: Create zip
         run: |
@@ -46,6 +47,7 @@ jobs:
           cp target/release/claw-agent-client-rs release/
           mkdir -p release/config
           cp config/agent.yml release/config/
+          cp config/metadata.json release/config/
           cp scripts/installs/macos_install.sh release/
       - name: Create zip
         run: |
@@ -73,6 +75,7 @@ jobs:
           cp target/release/claw-agent-client-rs release/
           mkdir -p release/config
           cp config/agent.yml release/config/
+          cp config/metadata.json release/config/
           cp scripts/installs/linux_install.sh release/
       - name: Create zip
         run: |

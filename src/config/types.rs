@@ -1,12 +1,16 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub agent_id: String,
     pub server_url: Option<String>,
     pub auth: AuthConfig,
+    #[serde(default)]
     pub capabilities: Capabilities,
+    #[serde(default)]
+    pub metadata_path: Option<String>,
 }
 
 impl Default for AgentConfig {
@@ -16,8 +20,107 @@ impl Default for AgentConfig {
             server_url: None,
             auth: AuthConfig::default(),
             capabilities: Capabilities::default(),
+            metadata_path: Some("config/metadata.json".to_string()),
         }
     }
+}
+
+impl AgentConfig {
+    pub fn load_metadata(&self) -> Result<CommandMetadata, anyhow::Error> {
+        let metadata_path = self.metadata_path.as_deref().unwrap_or("config/metadata.json");
+        let path = Path::new(metadata_path);
+        
+        if path.exists() {
+            let content = std::fs::read_to_string(path)?;
+            let metadata: CommandMetadata = serde_json::from_str(&content)?;
+            Ok(metadata)
+        } else {
+            tracing::warn!("Metadata file not found: {:?}", path);
+            Ok(CommandMetadata::default())
+        }
+    }
+
+    pub fn merge_with_metadata(&self) -> Result<Capabilities, anyhow::Error> {
+        let metadata = self.load_metadata()?;
+        let mut capabilities = self.capabilities.clone();
+        
+        for (cmd_id, cmd_metadata) in &metadata.commands {
+            let new_value = if let Some(_existing_value) = capabilities.commands.get(cmd_id) {
+                let config = capabilities.get_command_config(cmd_id).unwrap_or_else(|| CommandConfig {
+                    enabled: false,
+                    name: String::new(),
+                    description: String::new(),
+                    category: String::new(),
+                    parameters: vec![],
+                    returns: None,
+                });
+                let mut config = config;
+                config.merge_with_metadata(cmd_metadata);
+                serde_json::json!(config)
+            } else {
+                let mut config = CommandConfig {
+                    enabled: false,
+                    name: cmd_metadata.name.clone(),
+                    description: cmd_metadata.description.clone(),
+                    category: cmd_metadata.category.clone(),
+                    parameters: cmd_metadata.parameters.clone(),
+                    returns: cmd_metadata.returns.clone(),
+                };
+                config.merge_with_metadata(cmd_metadata);
+                serde_json::json!(config)
+            };
+            
+            capabilities.commands.insert(cmd_id.clone(), new_value);
+        }
+        
+        Ok(capabilities)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CommandMetadata {
+    #[serde(default)]
+    pub commands: HashMap<String, CommandMetadataItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandMetadataItem {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    #[serde(default)]
+    pub parameters: Vec<ParameterConfig>,
+    #[serde(default)]
+    pub returns: Option<ReturnConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReturnConfig {
+    #[serde(rename = "type")]
+    pub return_type: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub properties: Option<HashMap<String, ReturnProperty>>,
+    #[serde(default)]
+    pub items: Option<ReturnItems>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReturnProperty {
+    #[serde(rename = "type")]
+    pub prop_type: String,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReturnItems {
+    #[serde(rename = "type")]
+    pub item_type: String,
+    #[serde(default)]
+    pub properties: Option<HashMap<String, ReturnProperty>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,7 +139,7 @@ impl Default for AuthConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Capabilities {
     #[serde(flatten)]
-    pub commands: HashMap<String, CommandConfig>,
+    pub commands: HashMap<String, serde_json::Value>,
 }
 
 impl Default for Capabilities {
@@ -48,290 +151,120 @@ impl Default for Capabilities {
 }
 
 impl Capabilities {
-    pub fn default_commands() -> HashMap<String, CommandConfig> {
+    pub fn default_commands() -> HashMap<String, serde_json::Value> {
         let mut commands = HashMap::new();
         
-        commands.insert("capabilities".to_string(), CommandConfig {
-            enabled: true,
-            name: "Get Capabilities".to_string(),
-            description: "获取客户端支持的所有命令列表".to_string(),
-            category: "system".to_string(),
-            parameters: vec![],
-        });
-        
-        commands.insert("system.info".to_string(), CommandConfig {
-            enabled: true,
-            name: "Get System Info".to_string(),
-            description: "获取系统信息，包括主机名、操作系统版本、架构、用户名、运行时间、内存和CPU信息".to_string(),
-            category: "system".to_string(),
-            parameters: vec![],
-        });
-        
-        commands.insert("process.list".to_string(), CommandConfig {
-            enabled: true,
-            name: "List Processes".to_string(),
-            description: "获取当前运行的进程列表".to_string(),
-            category: "process".to_string(),
-            parameters: vec![],
-        });
-        
-        commands.insert("process.stop".to_string(), CommandConfig {
-            enabled: true,
-            name: "Stop Process".to_string(),
-            description: "停止指定PID的进程".to_string(),
-            category: "process".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "pid".to_string(), param_type: "number".to_string(), required: true, description: "进程ID".to_string() },
-                ParameterConfig { name: "force".to_string(), param_type: "boolean".to_string(), required: false, description: "是否强制终止".to_string() },
-            ],
-        });
-        
-        commands.insert("software.list".to_string(), CommandConfig {
-            enabled: true,
-            name: "List Software".to_string(),
-            description: "获取已安装的软件列表".to_string(),
-            category: "software".to_string(),
-            parameters: vec![],
-        });
-        
-        commands.insert("software.search".to_string(), CommandConfig {
-            enabled: true,
-            name: "Search Software".to_string(),
-            description: "搜索可安装的软件包".to_string(),
-            category: "software".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "query".to_string(), param_type: "string".to_string(), required: true, description: "搜索关键词".to_string() },
-            ],
-        });
-        
-        commands.insert("software.install".to_string(), CommandConfig {
-            enabled: true,
-            name: "Install Software".to_string(),
-            description: "安装指定的软件包".to_string(),
-            category: "software".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "package".to_string(), param_type: "string".to_string(), required: true, description: "软件包名称或ID".to_string() },
-                ParameterConfig { name: "silent".to_string(), param_type: "boolean".to_string(), required: false, description: "是否静默安装".to_string() },
-            ],
-        });
-        
-        commands.insert("software.uninstall".to_string(), CommandConfig {
-            enabled: true,
-            name: "Uninstall Software".to_string(),
-            description: "卸载指定的软件包".to_string(),
-            category: "software".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "package".to_string(), param_type: "string".to_string(), required: true, description: "软件包名称或ID".to_string() },
-            ],
-        });
-        
-        commands.insert("env.list".to_string(), CommandConfig {
-            enabled: true,
-            name: "List Environment Variables".to_string(),
-            description: "获取环境变量列表".to_string(),
-            category: "environment".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "scope".to_string(), param_type: "string".to_string(), required: false, description: "作用域: user, system, session".to_string() },
-            ],
-        });
-        
-        commands.insert("env.get".to_string(), CommandConfig {
-            enabled: true,
-            name: "Get Environment Variable".to_string(),
-            description: "获取指定环境变量的值".to_string(),
-            category: "environment".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "name".to_string(), param_type: "string".to_string(), required: true, description: "变量名".to_string() },
-                ParameterConfig { name: "scope".to_string(), param_type: "string".to_string(), required: false, description: "作用域: user, system, session".to_string() },
-            ],
-        });
-        
-        commands.insert("env.set".to_string(), CommandConfig {
-            enabled: true,
-            name: "Set Environment Variable".to_string(),
-            description: "设置环境变量".to_string(),
-            category: "environment".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "name".to_string(), param_type: "string".to_string(), required: true, description: "变量名".to_string() },
-                ParameterConfig { name: "value".to_string(), param_type: "string".to_string(), required: true, description: "变量值".to_string() },
-                ParameterConfig { name: "scope".to_string(), param_type: "string".to_string(), required: false, description: "作用域: user, system, session".to_string() },
-            ],
-        });
-        
-        commands.insert("env.delete".to_string(), CommandConfig {
-            enabled: true,
-            name: "Delete Environment Variable".to_string(),
-            description: "删除指定的环境变量".to_string(),
-            category: "environment".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "name".to_string(), param_type: "string".to_string(), required: true, description: "变量名".to_string() },
-                ParameterConfig { name: "scope".to_string(), param_type: "string".to_string(), required: false, description: "作用域: user, system, session".to_string() },
-            ],
-        });
-        
-        commands.insert("file.list".to_string(), CommandConfig {
-            enabled: true,
-            name: "List Directory".to_string(),
-            description: "列出指定目录的内容".to_string(),
-            category: "file".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "path".to_string(), param_type: "string".to_string(), required: false, description: "目录路径".to_string() },
-            ],
-        });
-        
-        commands.insert("file.read".to_string(), CommandConfig {
-            enabled: true,
-            name: "Read File".to_string(),
-            description: "读取文件内容".to_string(),
-            category: "file".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "path".to_string(), param_type: "string".to_string(), required: true, description: "文件路径".to_string() },
-            ],
-        });
-        
-        commands.insert("file.write".to_string(), CommandConfig {
-            enabled: true,
-            name: "Write File".to_string(),
-            description: "写入内容到文件".to_string(),
-            category: "file".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "path".to_string(), param_type: "string".to_string(), required: true, description: "文件路径".to_string() },
-                ParameterConfig { name: "content".to_string(), param_type: "string".to_string(), required: true, description: "文件内容".to_string() },
-            ],
-        });
-        
-        commands.insert("file.delete".to_string(), CommandConfig {
-            enabled: true,
-            name: "Delete File".to_string(),
-            description: "删除指定的文件或目录".to_string(),
-            category: "file".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "path".to_string(), param_type: "string".to_string(), required: true, description: "文件或目录路径".to_string() },
-            ],
-        });
-        
-        commands.insert("file.create_dir".to_string(), CommandConfig {
-            enabled: true,
-            name: "Create Directory".to_string(),
-            description: "创建目录".to_string(),
-            category: "file".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "path".to_string(), param_type: "string".to_string(), required: true, description: "目录路径".to_string() },
-                ParameterConfig { name: "recursive".to_string(), param_type: "boolean".to_string(), required: false, description: "是否递归创建".to_string() },
-            ],
-        });
-        
-        commands.insert("file.copy".to_string(), CommandConfig {
-            enabled: true,
-            name: "Copy File".to_string(),
-            description: "复制文件或目录".to_string(),
-            category: "file".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "src".to_string(), param_type: "string".to_string(), required: true, description: "源路径".to_string() },
-                ParameterConfig { name: "dst".to_string(), param_type: "string".to_string(), required: true, description: "目标路径".to_string() },
-            ],
-        });
-        
-        commands.insert("file.move".to_string(), CommandConfig {
-            enabled: true,
-            name: "Move File".to_string(),
-            description: "移动文件或目录".to_string(),
-            category: "file".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "src".to_string(), param_type: "string".to_string(), required: true, description: "源路径".to_string() },
-                ParameterConfig { name: "dst".to_string(), param_type: "string".to_string(), required: true, description: "目标路径".to_string() },
-            ],
-        });
-        
-        commands.insert("file.download".to_string(), CommandConfig {
-            enabled: true,
-            name: "Download File".to_string(),
-            description: "从URL下载文件".to_string(),
-            category: "file".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "url".to_string(), param_type: "string".to_string(), required: true, description: "下载链接".to_string() },
-                ParameterConfig { name: "dest".to_string(), param_type: "string".to_string(), required: true, description: "目标保存路径".to_string() },
-            ],
-        });
-        
-        commands.insert("config.get".to_string(), CommandConfig {
-            enabled: true,
-            name: "Get Config".to_string(),
-            description: "获取配置值".to_string(),
-            category: "config".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "path".to_string(), param_type: "string".to_string(), required: true, description: "配置路径".to_string() },
-            ],
-        });
-        
-        commands.insert("config.set".to_string(), CommandConfig {
-            enabled: true,
-            name: "Set Config".to_string(),
-            description: "设置配置值".to_string(),
-            category: "config".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "path".to_string(), param_type: "string".to_string(), required: true, description: "配置路径".to_string() },
-                ParameterConfig { name: "value".to_string(), param_type: "any".to_string(), required: true, description: "配置值".to_string() },
-            ],
-        });
-        
-        commands.insert("system.reboot".to_string(), CommandConfig {
-            enabled: true,
-            name: "Reboot System".to_string(),
-            description: "重启系统".to_string(),
-            category: "system".to_string(),
-            parameters: vec![],
-        });
-        
-        commands.insert("system.shutdown".to_string(), CommandConfig {
-            enabled: true,
-            name: "Shutdown System".to_string(),
-            description: "关闭系统".to_string(),
-            category: "system".to_string(),
-            parameters: vec![],
-        });
-        
-        commands.insert("shell.execute".to_string(), CommandConfig {
-            enabled: true,
-            name: "Execute Shell Command".to_string(),
-            description: "执行Shell命令并返回输出".to_string(),
-            category: "shell".to_string(),
-            parameters: vec![
-                ParameterConfig { name: "command".to_string(), param_type: "string".to_string(), required: true, description: "要执行的命令".to_string() },
-                ParameterConfig { name: "timeout".to_string(), param_type: "number".to_string(), required: false, description: "超时时间（秒）".to_string() },
-            ],
-        });
+        commands.insert("capabilities".to_string(), serde_json::json!(true));
+        commands.insert("system.info".to_string(), serde_json::json!(true));
+        commands.insert("system.reboot".to_string(), serde_json::json!(true));
+        commands.insert("system.shutdown".to_string(), serde_json::json!(true));
+        commands.insert("process.list".to_string(), serde_json::json!(true));
+        commands.insert("process.stop".to_string(), serde_json::json!(true));
+        commands.insert("software.list".to_string(), serde_json::json!(true));
+        commands.insert("software.search".to_string(), serde_json::json!(true));
+        commands.insert("software.install".to_string(), serde_json::json!(true));
+        commands.insert("software.uninstall".to_string(), serde_json::json!(true));
+        commands.insert("env.list".to_string(), serde_json::json!(true));
+        commands.insert("env.get".to_string(), serde_json::json!(true));
+        commands.insert("env.set".to_string(), serde_json::json!(true));
+        commands.insert("env.delete".to_string(), serde_json::json!(true));
+        commands.insert("file.list".to_string(), serde_json::json!(true));
+        commands.insert("file.read".to_string(), serde_json::json!(true));
+        commands.insert("file.write".to_string(), serde_json::json!(true));
+        commands.insert("file.delete".to_string(), serde_json::json!(true));
+        commands.insert("file.create_dir".to_string(), serde_json::json!(true));
+        commands.insert("file.copy".to_string(), serde_json::json!(true));
+        commands.insert("file.move".to_string(), serde_json::json!(true));
+        commands.insert("file.download".to_string(), serde_json::json!(true));
+        commands.insert("config.get".to_string(), serde_json::json!(true));
+        commands.insert("config.set".to_string(), serde_json::json!(true));
+        commands.insert("shell.execute".to_string(), serde_json::json!(true));
         
         commands
     }
 
     pub fn is_enabled(&self, command_id: &str) -> bool {
+        match self.commands.get(command_id) {
+            Some(value) => {
+                if let Some(b) = value.as_bool() {
+                    b
+                } else if let Some(obj) = value.as_object() {
+                    obj.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false)
+                } else {
+                    false
+                }
+            }
+            None => false,
+        }
+    }
+
+    pub fn get_command_config(&self, command_id: &str) -> Option<CommandConfig> {
+        self.commands.get(command_id).map(|value| {
+            if let Some(obj) = value.as_object() {
+                CommandConfig {
+                    enabled: obj.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false),
+                    name: obj.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    description: obj.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    category: obj.get("category").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    parameters: obj.get("parameters")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default(),
+                    returns: obj.get("returns")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok()),
+                }
+            } else if let Some(b) = value.as_bool() {
+                CommandConfig {
+                    enabled: b,
+                    name: String::new(),
+                    description: String::new(),
+                    category: String::new(),
+                    parameters: vec![],
+                    returns: None,
+                }
+            } else {
+                CommandConfig {
+                    enabled: false,
+                    name: String::new(),
+                    description: String::new(),
+                    category: String::new(),
+                    parameters: vec![],
+                    returns: None,
+                }
+            }
+        })
+    }
+
+    pub fn get_enabled_commands(&self) -> Vec<(String, CommandConfig)> {
         self.commands
-            .get(command_id)
-            .map(|c| c.enabled)
-            .unwrap_or(false)
-    }
-
-    pub fn get_command_config(&self, command_id: &str) -> Option<&CommandConfig> {
-        self.commands.get(command_id)
-    }
-
-    pub fn get_enabled_commands(&self) -> Vec<&CommandConfig> {
-        self.commands.values().filter(|c| c.enabled).collect()
+            .iter()
+            .filter_map(|(id, _value)| {
+                let config = self.get_command_config(id)?;
+                if config.enabled {
+                    Some((id.clone(), config))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     pub fn to_capabilities_list(&self) -> serde_json::Value {
         let list: Vec<serde_json::Value> = self.commands
             .iter()
-            .map(|(id, config)| {
-                serde_json::json!({
+            .map(|(id, _value)| {
+                let config = self.get_command_config(id).unwrap();
+                let mut cap = serde_json::json!({
                     "id": id,
                     "name": config.name,
                     "description": config.description,
                     "category": config.category,
                     "parameters": config.parameters,
                     "enabled": config.enabled
-                })
+                });
+                if let Some(returns) = &config.returns {
+                    cap["returns"] = serde_json::json!(returns);
+                }
+                cap
             })
             .collect();
         serde_json::json!({ "capabilities": list })
@@ -345,6 +278,28 @@ pub struct CommandConfig {
     pub description: String,
     pub category: String,
     pub parameters: Vec<ParameterConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub returns: Option<ReturnConfig>,
+}
+
+impl CommandConfig {
+    pub fn merge_with_metadata(&mut self, metadata: &CommandMetadataItem) {
+        if self.name.is_empty() {
+            self.name = metadata.name.clone();
+        }
+        if self.description.is_empty() {
+            self.description = metadata.description.clone();
+        }
+        if self.category.is_empty() {
+            self.category = metadata.category.clone();
+        }
+        if self.parameters.is_empty() {
+            self.parameters = metadata.parameters.clone();
+        }
+        if self.returns.is_none() {
+            self.returns = metadata.returns.clone();
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

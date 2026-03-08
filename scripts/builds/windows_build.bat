@@ -43,6 +43,11 @@ if exist "config\agent.yml" (
     echo Config copied to: %COMPOSE_DIR%\config\agent.yml
 )
 
+if exist "config\metadata.json" (
+    copy /Y "config\metadata.json" "%COMPOSE_DIR%\config\"
+    echo Metadata copied to: %COMPOSE_DIR%\config\metadata.json
+)
+
 if exist "%SCRIPT_DIR%..\installs\windows_install.bat" (
     copy /Y "%SCRIPT_DIR%..\installs\windows_install.bat" "%COMPOSE_DIR%\scripts\"
     echo Install script copied to: %COMPOSE_DIR%\scripts\windows_install.bat

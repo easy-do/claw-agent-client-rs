@@ -44,6 +44,12 @@ if [ -f "$PROJECT_DIR/config/agent.yml" ]; then
     echo "Config copied to: $COMPOSE_DIR/config/agent.yml"
 fi
 
+# 复制元数据文件
+if [ -f "$PROJECT_DIR/config/metadata.json" ]; then
+    cp "$PROJECT_DIR/config/metadata.json" "$COMPOSE_DIR/config/"
+    echo "Metadata copied to: $COMPOSE_DIR/config/metadata.json"
+fi
+
 # 复制安装脚本
 if [ -f "$SCRIPT_DIR/../installs/macos_install.sh" ]; then
     cp "$SCRIPT_DIR/../installs/macos_install.sh" "$COMPOSE_DIR/scripts/"
