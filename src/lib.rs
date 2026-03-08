@@ -1,6 +1,5 @@
 pub mod utils;
 pub mod config;
-pub mod auth;
 pub mod client;
 
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
